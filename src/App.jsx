@@ -10,6 +10,9 @@ import {
 } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import Layout from '@/Layout';
+import Landing from '@/pages/marketing/Landing';
+import Privacy from '@/pages/marketing/Privacy';
+import Terms from '@/pages/marketing/Terms';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Users from '@/pages/Users';
@@ -48,7 +51,7 @@ function NotAuthorized() {
 function ProtectedRoute({ children }) {
   const { user, isAdmin, loading } = useAuth();
   if (loading) return <Spinner />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/admin" replace />;
   if (!isAdmin) return <NotAuthorized />;
   return <Layout>{children}</Layout>;
 }
@@ -59,12 +62,20 @@ function AppRoutes() {
 
   return (
     <Routes>
+      {/* Public marketing */}
+      <Route path="/" element={<Landing />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
+
+      {/* Admin login */}
       <Route
-        path="/login"
-        element={user ? <Navigate to="/" replace /> : <Login />}
+        path="/admin"
+        element={user ? <Navigate to="/admin/dashboard" replace /> : <Login />}
       />
+
+      {/* Admin app */}
       <Route
-        path="/"
+        path="/admin/dashboard"
         element={
           <ProtectedRoute>
             <Dashboard />
@@ -72,7 +83,7 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/users"
+        path="/admin/users"
         element={
           <ProtectedRoute>
             <Users />
@@ -80,7 +91,7 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/videos"
+        path="/admin/videos"
         element={
           <ProtectedRoute>
             <Videos />
@@ -88,7 +99,7 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/reports"
+        path="/admin/reports"
         element={
           <ProtectedRoute>
             <Reports />
@@ -96,13 +107,22 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/analytics"
+        path="/admin/analytics"
         element={
           <ProtectedRoute>
             <Analytics />
           </ProtectedRoute>
         }
       />
+
+      {/* Legacy redirects for old admin URLs */}
+      <Route path="/login" element={<Navigate to="/admin" replace />} />
+      <Route path="/dashboard" element={<Navigate to="/admin/dashboard" replace />} />
+      <Route path="/users" element={<Navigate to="/admin/users" replace />} />
+      <Route path="/videos" element={<Navigate to="/admin/videos" replace />} />
+      <Route path="/reports" element={<Navigate to="/admin/reports" replace />} />
+      <Route path="/analytics" element={<Navigate to="/admin/analytics" replace />} />
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

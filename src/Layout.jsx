@@ -12,11 +12,11 @@ import TopBar from '@/components/admin/TopBar';
 import CommandPalette from '@/components/admin/CommandPalette';
 
 const NAV = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { to: '/users', label: 'Users', icon: Users },
-  { to: '/videos', label: 'Videos', icon: Video },
-  { to: '/reports', label: 'Reports', icon: Flag, badge: null },
-  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/videos', label: 'Videos', icon: Video },
+  { to: '/admin/reports', label: 'Reports', icon: Flag, badge: null },
+  { to: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
 export default function Layout({ children }) {
