@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  collectionGroup,
   doc,
   getDoc,
   getDocs,
@@ -9,6 +10,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  where,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { firebaseAuth, firebaseStorage, firestore } from '@/lib/firebase';
@@ -41,6 +43,54 @@ export const videosRepo = {
   get: async (id) => {
     const snap = await getDoc(doc(firestore, 'videos', id));
     return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  },
+
+  byOwner: async (uid, { pageSize = 50 } = {}) => {
+    try {
+      const q = query(
+        videosCol(),
+        where('ownerId', '==', uid),
+        orderBy('createdAt', 'desc'),
+        limit(pageSize),
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch {
+      const q = query(videosCol(), where('ownerId', '==', uid), limit(pageSize));
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    }
+  },
+
+  byIds: async (ids) => {
+    if (!ids?.length) return [];
+    const out = [];
+    for (const id of ids) {
+      const v = await getDoc(doc(firestore, 'videos', id));
+      if (v.exists()) out.push({ id: v.id, ...v.data() });
+    }
+    return out;
+  },
+
+  commentsByAuthor: async (uid, { pageSize = 50 } = {}) => {
+    try {
+      const q = query(
+        collectionGroup(firestore, 'comments'),
+        where('authorId', '==', uid),
+        orderBy('createdAt', 'desc'),
+        limit(pageSize),
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({
+        id: d.id,
+        videoId: d.ref.parent.parent?.id ?? null,
+        ...d.data(),
+      }));
+    } catch (err) {
+      // Likely a missing collection-group index. Surface so the UI can show
+      // a helpful link.
+      throw err;
+    }
   },
 
   // Uploads a video file to Storage and writes the Firestore doc.

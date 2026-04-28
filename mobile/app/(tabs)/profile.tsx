@@ -100,13 +100,6 @@ export default function Profile() {
                 </View>
               </Pressable>
 
-              <Text style={styles.displayName}>{displayName ?? handle}</Text>
-              {me.email ? (
-                <View style={styles.emailPill}>
-                  <Text style={styles.emailText}>{me.email}</Text>
-                </View>
-              ) : null}
-
               {bio ? <Text style={styles.bio}>{bio}</Text> : null}
 
               <View style={styles.statsRow}>
@@ -213,16 +206,7 @@ const styles = StyleSheet.create({
     borderColor: colors.bg,
     borderWidth: 2,
   },
-  displayName: { color: colors.text, fontSize: 18, fontWeight: '700', marginTop: 12 },
-  emailPill: {
-    marginTop: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    backgroundColor: '#ffffff',
-    borderRadius: 999,
-  },
-  emailText: { color: '#000000', fontSize: 13, fontWeight: '600' },
-  bio: { color: colors.textMuted, fontSize: 13, textAlign: 'center', marginTop: 10, paddingHorizontal: 24 },
+  bio: { color: colors.textMuted, fontSize: 13, textAlign: 'center', marginTop: 16, paddingHorizontal: 24 },
   statsRow: { flexDirection: 'row', gap: 32, marginTop: 16 },
   stat: { alignItems: 'center' },
   statValue: { color: colors.text, fontSize: 16, fontWeight: '700' },

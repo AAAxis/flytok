@@ -80,6 +80,31 @@ export const usersRepo = {
   // removed via the Admin SDK on a backend.
   delete: (id) => deleteDoc(doc(firestore, 'users', id)),
 
+  followingOf: async (uid, { pageSize = 100 } = {}) => {
+    const snap = await getDocs(
+      query(collection(firestore, 'users', uid, 'following'), limit(pageSize)),
+    );
+    return snap.docs.map((d) => d.id);
+  },
+
+  savesOf: async (uid, { pageSize = 100 } = {}) => {
+    try {
+      const snap = await getDocs(
+        query(
+          collection(firestore, 'users', uid, 'saves'),
+          orderBy('createdAt', 'desc'),
+          limit(pageSize),
+        ),
+      );
+      return snap.docs.map((d) => d.id);
+    } catch {
+      const snap = await getDocs(
+        query(collection(firestore, 'users', uid, 'saves'), limit(pageSize)),
+      );
+      return snap.docs.map((d) => d.id);
+    }
+  },
+
   // Creates a real Firebase Auth user via a secondary Auth instance so the
   // admin's own session is not affected. UID is auto-generated. Role
   // assignment (admin / advertiser) requires the Admin SDK separately.
