@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
+  getFollowCounts,
   getMyVideos,
   getSavedVideoIds,
   getVideosByIds,
@@ -28,9 +30,11 @@ type Tab = 'mine' | 'saved';
 export default function Profile() {
   const me = auth().currentUser;
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [photoURL, setPhotoURL] = useState<string | null>(null);
   const [bio, setBio] = useState<string | null>(null);
   const [mine, setMine] = useState<VideoDoc[]>([]);
   const [saved, setSaved] = useState<VideoDoc[]>([]);
+  const [counts, setCounts] = useState({ following: 0, followers: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>('mine');
@@ -39,15 +43,18 @@ export default function Profile() {
 
   const load = useCallback(async () => {
     if (!me) return;
-    const [profileSnap, myVideos, savedIds] = await Promise.all([
+    const [profileSnap, myVideos, savedIds, followCounts] = await Promise.all([
       usersCol().doc(me.uid).get(),
       getMyVideos(me.uid).catch(() => []),
       getSavedVideoIds(me.uid).catch(() => []),
+      getFollowCounts(me.uid),
     ]);
     const profileData = profileSnap.data() ?? {};
     setDisplayName((profileData.displayName as string) ?? null);
+    setPhotoURL((profileData.photoURL as string) ?? null);
     setBio((profileData.bio as string) ?? null);
     setMine(myVideos);
+    setCounts(followCounts);
     const savedVideos = await getVideosByIds(savedIds).catch(() => []);
     setSaved(savedVideos);
   }, [me]);
@@ -92,25 +99,24 @@ export default function Profile() {
           <>
             <View style={styles.headerArea}>
               <Pressable onPress={() => setShowEdit(true)} style={styles.avatarWrap} hitSlop={6}>
-                <View style={styles.avatar}>
-                  <Ionicons name="person" size={32} color={colors.text} />
-                </View>
+                {photoURL ? (
+                  <Image source={{ uri: photoURL }} style={styles.avatarImage} />
+                ) : (
+                  <View style={styles.avatar}>
+                    <Ionicons name="person" size={32} color={colors.text} />
+                  </View>
+                )}
                 <View style={styles.editBadge}>
                   <Ionicons name="pencil" size={12} color={colors.bg} />
                 </View>
               </Pressable>
 
-              <Text style={styles.displayName}>{displayName ?? handle}</Text>
-              {me.email ? (
-                <View style={styles.emailPill}>
-                  <Text style={styles.emailText}>{me.email}</Text>
-                </View>
-              ) : null}
-
               {bio ? <Text style={styles.bio}>{bio}</Text> : null}
 
               <View style={styles.statsRow}>
                 <Stat label="Posts" value={mine.length} />
+                <Stat label="Following" value={counts.following} />
+                <Stat label="Followers" value={counts.followers} />
               </View>
             </View>
 
@@ -200,6 +206,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.surfaceAlt,
+  },
   editBadge: {
     position: 'absolute',
     right: -2,
@@ -213,15 +225,6 @@ const styles = StyleSheet.create({
     borderColor: colors.bg,
     borderWidth: 2,
   },
-  displayName: { color: colors.text, fontSize: 18, fontWeight: '700', marginTop: 12 },
-  emailPill: {
-    marginTop: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    backgroundColor: '#ffffff',
-    borderRadius: 999,
-  },
-  emailText: { color: '#000000', fontSize: 13, fontWeight: '600' },
   bio: { color: colors.textMuted, fontSize: 13, textAlign: 'center', marginTop: 16, paddingHorizontal: 24 },
   statsRow: { flexDirection: 'row', gap: 32, marginTop: 16 },
   stat: { alignItems: 'center' },

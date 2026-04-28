@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LocationPicker } from '@/components/admin/LocationPicker';
 
 function fmtDate(ts) {
   if (!ts) return '—';
@@ -125,11 +126,12 @@ function UploadVideoModal({ onClose }) {
   const fileInput = useRef(null);
   const [file, setFile] = useState(null);
   const [caption, setCaption] = useState('');
+  const [location, setLocation] = useState(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
 
   const upload = useMutation({
-    mutationFn: () => videosRepo.upload({ file, caption, onProgress: setProgress }),
+    mutationFn: () => videosRepo.upload({ file, caption, location, onProgress: setProgress }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['videos'] });
       onClose();
@@ -209,6 +211,11 @@ function UploadVideoModal({ onClose }) {
             className="bg-zinc-950 border-zinc-800 text-zinc-100"
             disabled={upload.isPending}
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-zinc-400">Location</Label>
+          <LocationPicker value={location} onChange={setLocation} />
         </div>
 
         {upload.isPending && (

@@ -185,6 +185,25 @@ export function followingCol(uid: string) {
   return usersCol().doc(uid).collection('following');
 }
 
+export function followersCol(uid: string) {
+  return usersCol().doc(uid).collection('followers');
+}
+
+export async function getFollowCounts(uid: string): Promise<{ following: number; followers: number }> {
+  try {
+    const [followingSnap, followersSnap] = await Promise.all([
+      followingCol(uid).count().get(),
+      followersCol(uid).count().get(),
+    ]);
+    return {
+      following: followingSnap.data().count,
+      followers: followersSnap.data().count,
+    };
+  } catch {
+    return { following: 0, followers: 0 };
+  }
+}
+
 export function threadIdFor(uidA: string, uidB: string) {
   return [uidA, uidB].sort().join('_');
 }
@@ -254,14 +273,38 @@ export async function postComment(videoId: string, text: string) {
 export async function follow(targetUid: string) {
   const user = requireUser();
   if (user.uid === targetUid) return;
-  await followingCol(user.uid).doc(targetUid).set({
-    createdAt: firestore.FieldValue.serverTimestamp(),
-  });
+  const ts = firestore.FieldValue.serverTimestamp();
+  await Promise.all([
+    followingCol(user.uid).doc(targetUid).set({ createdAt: ts }),
+    followersCol(targetUid).doc(user.uid).set({ createdAt: ts }),
+  ]);
 }
 
 export async function unfollow(targetUid: string) {
   const user = requireUser();
-  await followingCol(user.uid).doc(targetUid).delete();
+  await Promise.all([
+    followingCol(user.uid).doc(targetUid).delete(),
+    followersCol(targetUid).doc(user.uid).delete(),
+  ]);
+}
+
+export async function uploadProfilePhoto(uri: string): Promise<string> {
+  const user = requireUser();
+  const ext = uri.split('.').pop()?.toLowerCase().split('?')[0] || 'jpg';
+  const storagePath = `avatars/${user.uid}/${Date.now()}.${ext}`;
+  const ref = storage().ref(storagePath);
+  await ref.putFile(uri);
+  const downloadURL = await ref.getDownloadURL();
+  await usersCol().doc(user.uid).set(
+    { photoURL: downloadURL, photoStoragePath: storagePath },
+    { merge: true },
+  );
+  try {
+    await user.updateProfile({ photoURL: downloadURL });
+  } catch {
+    // Auth profile mirror is best-effort
+  }
+  return downloadURL;
 }
 
 export async function ensureThread(otherUid: string, otherEmail: string | null) {
