@@ -12,7 +12,8 @@ import {
   setDoc,
   updateDoc,
 } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase';
+import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { firestore, secondaryAuth } from '@/lib/firebase';
 
 const usersCol = () => collection(firestore, 'users');
 
@@ -78,4 +79,25 @@ export const usersRepo = {
   // Deletes the Firestore profile doc only. The Auth account, if any, must be
   // removed via the Admin SDK on a backend.
   delete: (id) => deleteDoc(doc(firestore, 'users', id)),
+
+  // Creates a real Firebase Auth user via a secondary Auth instance so the
+  // admin's own session is not affected. UID is auto-generated. Role
+  // assignment (admin / advertiser) requires the Admin SDK separately.
+  createAuthUser: async ({ email, password, displayName }) => {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    const uid = cred.user.uid;
+    await setDoc(
+      doc(firestore, 'users', uid),
+      clean({
+        uid,
+        email: email.trim(),
+        displayName: displayName?.trim() || null,
+        createdAt: serverTimestamp(),
+        createdByAdmin: true,
+      }),
+      { merge: true },
+    );
+    try { await signOut(secondaryAuth); } catch { /* ignore */ }
+    return uid;
+  },
 };

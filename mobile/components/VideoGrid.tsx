@@ -1,0 +1,89 @@
+import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { VideoView, useVideoPlayer } from 'expo-video';
+import type { VideoDoc } from '@/lib/firestore';
+import { colors } from '@/lib/theme';
+
+const { width } = Dimensions.get('window');
+const COL_GAP = 2;
+const COLS = 3;
+const TILE_W = Math.floor((width - COL_GAP * (COLS - 1)) / COLS);
+const TILE_H = Math.floor(TILE_W * 1.4);
+
+export function VideoGrid({
+  videos,
+  emptyLabel,
+  onPress,
+}: {
+  videos: VideoDoc[];
+  emptyLabel: string;
+  onPress?: (video: VideoDoc) => void;
+}) {
+  if (videos.length === 0) {
+    return (
+      <View style={styles.empty}>
+        <Ionicons name="videocam-outline" size={32} color={colors.textFaint} />
+        <Text style={styles.emptyText}>{emptyLabel}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.grid}>
+      {videos.map((v) => (
+        <GridTile key={v.id} video={v} onPress={() => onPress?.(v)} />
+      ))}
+    </View>
+  );
+}
+
+function GridTile({ video, onPress }: { video: VideoDoc; onPress?: () => void }) {
+  const player = useVideoPlayer(video.downloadURL, (p) => {
+    p.muted = true;
+    p.loop = false;
+  });
+
+  return (
+    <Pressable onPress={onPress} style={styles.tile}>
+      <VideoView player={player} style={styles.tileVideo} contentFit="cover" nativeControls={false} />
+      {video.caption ? (
+        <View style={styles.tileOverlay}>
+          <Text numberOfLines={1} style={styles.tileCaption}>
+            {video.caption}
+          </Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: COL_GAP,
+  },
+  tile: {
+    width: TILE_W,
+    height: TILE_H,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+  },
+  tileVideo: { ...StyleSheet.absoluteFillObject },
+  tileOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  tileCaption: { color: colors.text, fontSize: 11 },
+  empty: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyText: { color: colors.textDim, fontSize: 13 },
+});

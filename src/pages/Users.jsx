@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { Pencil, Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus } from 'lucide-react';
 import { usersRepo } from '@/lib/repositories';
 import {
   Table,
@@ -44,6 +45,7 @@ function fmtDate(ts) {
 const EMPTY_FORM = {
   id: '',
   email: '',
+  password: '',
   displayName: '',
   username: '',
   avatarUrl: '',
@@ -61,7 +63,16 @@ export default function Users() {
   });
 
   const createMut = useMutation({
-    mutationFn: (fields) => usersRepo.create(fields),
+    mutationFn: ({ email, password, displayName, username, avatarUrl, role }) =>
+      usersRepo.createAuthUser({ email, password, displayName }).then(async (uid) => {
+        // Apply additional profile fields after the auth user is created.
+        const extra = {};
+        if (username) extra.username = username;
+        if (avatarUrl) extra.avatarUrl = avatarUrl;
+        if (role && role !== 'user') extra.role = role;
+        if (Object.keys(extra).length) await usersRepo.update(uid, extra);
+        return uid;
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] });
       setEditing(null);
@@ -124,9 +135,9 @@ export default function Users() {
               {users.map((u) => (
                 <TableRow key={u.id} className="border-zinc-800 hover:bg-zinc-800/40">
                   <TableCell>
-                    <div className="flex items-center gap-3">
+                    <Link to={`/admin/users/${u.id}`} className="flex items-center gap-3 hover:underline">
                       <Avatar className="w-8 h-8">
-                        <AvatarImage src={u.avatarUrl} alt="" />
+                        <AvatarImage src={u.photoURL ?? u.avatarUrl} alt="" />
                         <AvatarFallback className="bg-zinc-800 text-zinc-300 text-xs">
                           {(u.displayName ?? u.email ?? '?').toString()[0].toUpperCase()}
                         </AvatarFallback>
@@ -136,12 +147,12 @@ export default function Users() {
                           {u.displayName ?? '—'}
                         </div>
                         <div className="text-xs text-zinc-500 truncate">
-                          @{u.username ?? '—'}
+                          @{u.username ?? u.id.slice(0, 8)}
                         </div>
                       </div>
-                    </div>
+                    </Link>
                   </TableCell>
-                  <TableCell className="text-zinc-400">{u.email ?? '—'}</TableCell>
+                  <TableCell className="text-zinc-100">{u.email ?? '—'}</TableCell>
                   <TableCell className="text-zinc-400">{fmtDate(u.createdAt)}</TableCell>
                   <TableCell className="text-zinc-400 text-right">{u.videoCount ?? 0}</TableCell>
                   <TableCell className="text-zinc-400 text-right">{u.followerCount ?? 0}</TableCell>
@@ -186,10 +197,10 @@ export default function Users() {
         error={createMut.error ?? updateMut.error}
         onSubmit={(form) => {
           if (editing === 'new') {
-            const { id, ...fields } = form;
-            createMut.mutate({ id: id.trim(), ...fields });
+            createMut.mutate(form);
           } else {
-            const { id, ...fields } = form;
+            const { id, password, ...fields } = form;
+            void id; void password;
             updateMut.mutate({ id: editing.id, fields });
           }
         }}
@@ -241,6 +252,7 @@ function UserFormDialog({ open, mode, user, onOpenChange, onSubmit, pending, err
       setForm({
         id: user.id ?? '',
         email: user.email ?? '',
+        password: '',
         displayName: user.displayName ?? '',
         username: user.username ?? '',
         avatarUrl: user.avatarUrl ?? '',
@@ -260,8 +272,8 @@ function UserFormDialog({ open, mode, user, onOpenChange, onSubmit, pending, err
           <DialogTitle>{mode === 'create' ? 'Create user' : 'Edit user'}</DialogTitle>
           <DialogDescription>
             {mode === 'create'
-              ? 'Creates a Firestore profile only. To create a real Firebase Auth account, use a backend with the Admin SDK.'
-              : 'Updates the Firestore profile document.'}
+              ? 'Creates a real Firebase Auth account with an auto-generated UID. Admin / advertiser custom claims still need to be granted via scripts/grant-admin.js.'
+              : 'Updates the Firestore profile document. The Firebase Auth account is unchanged.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -272,18 +284,32 @@ function UserFormDialog({ open, mode, user, onOpenChange, onSubmit, pending, err
             onSubmit(form);
           }}
         >
-          <Field label="User ID" required={mode === 'create'}>
+          {mode === 'edit' && (
+            <Field label="User ID">
+              <Input value={form.id} disabled className="font-mono text-xs" />
+            </Field>
+          )}
+          <Field label="Email" required={mode === 'create'}>
             <Input
-              value={form.id}
-              onChange={set('id')}
+              type="email"
+              value={form.email}
+              onChange={set('email')}
               disabled={mode === 'edit'}
-              placeholder="firebase uid or custom id"
               required={mode === 'create'}
             />
           </Field>
-          <Field label="Email">
-            <Input type="email" value={form.email} onChange={set('email')} />
-          </Field>
+          {mode === 'create' && (
+            <Field label="Password" required>
+              <Input
+                type="password"
+                value={form.password}
+                onChange={set('password')}
+                minLength={6}
+                required
+                placeholder="At least 6 characters"
+              />
+            </Field>
+          )}
           <Field label="Display name">
             <Input value={form.displayName} onChange={set('displayName')} />
           </Field>
@@ -300,6 +326,7 @@ function UserFormDialog({ open, mode, user, onOpenChange, onSubmit, pending, err
               className="bg-zinc-950 border border-zinc-800 text-zinc-100 text-sm rounded-md px-3 py-2"
             >
               <option value="user">user</option>
+              <option value="advertiser">advertiser</option>
               <option value="admin">admin</option>
             </select>
           </Field>

@@ -17,6 +17,7 @@ import Support from '@/pages/marketing/Support';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Users from '@/pages/Users';
+import UserDetail from '@/pages/UserDetail';
 import Videos from '@/pages/Videos';
 import Reports from '@/pages/Reports';
 import Analytics from '@/pages/Analytics';
@@ -89,6 +90,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Users />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/users/:uid"
+        element={
+          <ProtectedRoute>
+            <UserDetail />
           </ProtectedRoute>
         }
       />

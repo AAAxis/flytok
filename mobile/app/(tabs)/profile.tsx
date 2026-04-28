@@ -1,155 +1,250 @@
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import auth from '@react-native-firebase/auth';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useAuth } from '@/lib/AuthContext';
-import { deleteAccount } from '@/lib/firestore';
+import {
+  getMyVideos,
+  getSavedVideoIds,
+  getVideosByIds,
+  usersCol,
+  type VideoDoc,
+} from '@/lib/firestore';
+import { VideoGrid } from '@/components/VideoGrid';
+import { SettingsSheet } from '@/components/SettingsSheet';
+import { EditProfileSheet } from '@/components/EditProfileSheet';
 import { colors } from '@/lib/theme';
 
-export default function Profile() {
-  const { user, logout } = useAuth();
-  const router = useRouter();
+type Tab = 'mine' | 'saved';
 
-  function confirmDelete() {
-    Alert.alert(
-      'Delete account?',
-      'This permanently removes your Flytok account. Content you have already shared may still be visible to others.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteAccount();
-            } catch (err: any) {
-              if (err?.code === 'auth/requires-recent-login') {
-                Alert.alert(
-                  'Sign in again',
-                  'For security, please sign out and sign in again, then delete your account.',
-                );
-              } else {
-                Alert.alert('Could not delete', err?.message ?? 'Try again later.');
-              }
-            }
-          },
-        },
-      ],
-    );
+export default function Profile() {
+  const me = auth().currentUser;
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [bio, setBio] = useState<string | null>(null);
+  const [mine, setMine] = useState<VideoDoc[]>([]);
+  const [saved, setSaved] = useState<VideoDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [tab, setTab] = useState<Tab>('mine');
+  const [showSettings, setShowSettings] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!me) return;
+    const [profileSnap, myVideos, savedIds] = await Promise.all([
+      usersCol().doc(me.uid).get(),
+      getMyVideos(me.uid).catch(() => []),
+      getSavedVideoIds(me.uid).catch(() => []),
+    ]);
+    const profileData = profileSnap.data() ?? {};
+    setDisplayName((profileData.displayName as string) ?? null);
+    setBio((profileData.bio as string) ?? null);
+    setMine(myVideos);
+    const savedVideos = await getVideosByIds(savedIds).catch(() => []);
+    setSaved(savedVideos);
+  }, [me]);
+
+  useEffect(() => {
+    load().finally(() => setLoading(false));
+  }, [load]);
+
+  async function onRefresh() {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
   }
+
+  if (!me) return null;
+
+  const handle = displayName ?? (me.email ? me.email.split('@')[0] : me.uid.slice(0, 8));
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Profile</Text>
+      <View style={styles.topBar}>
+        <Text style={styles.handle}>@{handle}</Text>
+        <Pressable onPress={() => setShowSettings(true)} hitSlop={10}>
+          <Ionicons name="menu" size={26} color={colors.text} />
+        </Pressable>
+      </View>
 
-        <View style={styles.card}>
-          <Text style={styles.label}>Signed in as</Text>
-          <Text style={styles.value}>{user?.email ?? user?.uid}</Text>
-        </View>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
+        }
+      >
+        {loading ? (
+          <View style={styles.loading}>
+            <ActivityIndicator color={colors.accent} />
+          </View>
+        ) : (
+          <>
+            <View style={styles.headerArea}>
+              <Pressable onPress={() => setShowEdit(true)} style={styles.avatarWrap} hitSlop={6}>
+                <View style={styles.avatar}>
+                  <Ionicons name="person" size={32} color={colors.text} />
+                </View>
+                <View style={styles.editBadge}>
+                  <Ionicons name="pencil" size={12} color={colors.bg} />
+                </View>
+              </Pressable>
 
-        <Section title="Legal">
-          <Row
-            icon="document-text-outline"
-            label="Terms of Service"
-            onPress={() => router.push('/legal/terms' as never)}
-          />
-          <Row
-            icon="shield-checkmark-outline"
-            label="Privacy Policy"
-            onPress={() => router.push('/legal/privacy' as never)}
-          />
-        </Section>
+              <Text style={styles.displayName}>{displayName ?? handle}</Text>
+              <Text style={styles.email}>{me.email ?? ''}</Text>
 
-        <Section title="Account">
-          <Row icon="log-out-outline" label="Sign out" onPress={logout} />
-          <Row
-            icon="trash-outline"
-            label="Delete account"
-            onPress={confirmDelete}
-            destructive
-          />
-        </Section>
+              {bio ? <Text style={styles.bio}>{bio}</Text> : null}
+
+              <View style={styles.statsRow}>
+                <Stat label="Posts" value={mine.length} />
+                <Stat label="Saved" value={saved.length} />
+              </View>
+
+              <Pressable onPress={() => setShowEdit(true)} style={styles.editBtn}>
+                <Text style={styles.editBtnText}>Edit profile</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.tabsBar}>
+              <TabButton
+                active={tab === 'mine'}
+                icon="grid-outline"
+                onPress={() => setTab('mine')}
+              />
+              <TabButton
+                active={tab === 'saved'}
+                icon="bookmark-outline"
+                onPress={() => setTab('saved')}
+              />
+            </View>
+
+            {tab === 'mine' ? (
+              <VideoGrid videos={mine} emptyLabel="No videos yet" />
+            ) : (
+              <VideoGrid videos={saved} emptyLabel="Nothing saved yet" />
+            )}
+          </>
+        )}
       </ScrollView>
+
+      <SettingsSheet
+        visible={showSettings}
+        onClose={() => setShowSettings(false)}
+        onEditProfile={() => {
+          setShowSettings(false);
+          setShowEdit(true);
+        }}
+      />
+      <EditProfileSheet
+        visible={showEdit}
+        onClose={() => setShowEdit(false)}
+        onSaved={load}
+      />
     </SafeAreaView>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionList}>{children}</View>
+    <View style={styles.stat}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
-function Row({
+function TabButton({
+  active,
   icon,
-  label,
   onPress,
-  destructive,
 }: {
+  active: boolean;
   icon: React.ComponentProps<typeof Ionicons>['name'];
-  label: string;
   onPress: () => void;
-  destructive?: boolean;
 }) {
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-    >
-      <Ionicons
-        name={icon}
-        size={20}
-        color={destructive ? colors.danger : colors.textMuted}
-      />
-      <Text style={[styles.rowLabel, destructive && styles.rowLabelDestructive]}>{label}</Text>
-      <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+    <Pressable onPress={onPress} style={[styles.tabButton, active && styles.tabButtonActive]}>
+      <Ionicons name={icon} size={20} color={active ? colors.text : colors.textDim} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  container: { padding: 24, gap: 24 },
-  title: { color: colors.text, fontSize: 24, fontWeight: '700' },
-  card: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 8,
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  label: { color: colors.textDim, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 },
-  value: { color: colors.text, fontSize: 14, marginTop: 4 },
-  section: { gap: 8 },
-  sectionTitle: {
-    color: colors.textDim,
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginLeft: 4,
+  handle: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  content: { paddingBottom: 60 },
+  loading: { paddingVertical: 60, alignItems: 'center' },
+  headerArea: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 12, paddingBottom: 16 },
+  avatarWrap: { position: 'relative' },
+  avatar: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sectionList: {
+  editBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderColor: colors.bg,
+    borderWidth: 2,
+  },
+  displayName: { color: colors.text, fontSize: 18, fontWeight: '700', marginTop: 12 },
+  email: { color: colors.text, fontSize: 13, marginTop: 4, fontWeight: '500' },
+  bio: { color: colors.textMuted, fontSize: 13, textAlign: 'center', marginTop: 10, paddingHorizontal: 24 },
+  statsRow: { flexDirection: 'row', gap: 32, marginTop: 16 },
+  stat: { alignItems: 'center' },
+  statValue: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  statLabel: { color: colors.textDim, fontSize: 12 },
+  editBtn: {
+    marginTop: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 8,
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 8,
-    overflow: 'hidden',
   },
-  row: {
+  editBtnText: { color: colors.text, fontSize: 13, fontWeight: '500' },
+  tabsBar: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    marginTop: 8,
   },
-  rowPressed: { backgroundColor: colors.surfaceAlt },
-  rowLabel: { flex: 1, color: colors.text, fontSize: 14 },
-  rowLabelDestructive: { color: colors.danger },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomColor: 'transparent',
+    borderBottomWidth: 2,
+  },
+  tabButtonActive: { borderBottomColor: colors.text },
 });

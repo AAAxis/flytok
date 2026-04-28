@@ -52,6 +52,68 @@ export function blockedCol(uid: string) {
   return usersCol().doc(uid).collection('blocked');
 }
 
+export function savesCol(uid: string) {
+  return usersCol().doc(uid).collection('saves');
+}
+
+export async function toggleSave(videoId: string) {
+  const user = requireUser();
+  const ref = savesCol(user.uid).doc(videoId);
+  const snap = await ref.get();
+  if (snap.exists) {
+    await ref.delete();
+    return false;
+  }
+  await ref.set({ createdAt: firestore.FieldValue.serverTimestamp() });
+  return true;
+}
+
+export async function getSavedVideoIds(uid: string) {
+  const snap = await savesCol(uid).orderBy('createdAt', 'desc').limit(200).get();
+  return snap.docs.map((d) => d.id);
+}
+
+export async function getVideosByIds(ids: string[]): Promise<VideoDoc[]> {
+  if (ids.length === 0) return [];
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
+  const results: VideoDoc[] = [];
+  for (const chunk of chunks) {
+    const snap = await videosCol().where(firestore.FieldPath.documentId(), 'in', chunk).get();
+    snap.docs.forEach((d) =>
+      results.push({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }),
+    );
+  }
+  // Preserve original order
+  const indexOf = new Map(ids.map((id, i) => [id, i]));
+  results.sort((a, b) => (indexOf.get(a.id) ?? 0) - (indexOf.get(b.id) ?? 0));
+  return results;
+}
+
+export async function getMyVideos(uid: string): Promise<VideoDoc[]> {
+  const snap = await videosCol()
+    .where('ownerId', '==', uid)
+    .orderBy('createdAt', 'desc')
+    .limit(200)
+    .get();
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }));
+}
+
+export async function updateProfile({
+  displayName,
+  bio,
+}: {
+  displayName?: string;
+  bio?: string;
+}) {
+  const user = requireUser();
+  const update: Record<string, unknown> = {};
+  if (displayName !== undefined) update.displayName = displayName.trim() || null;
+  if (bio !== undefined) update.bio = bio.trim() || null;
+  if (Object.keys(update).length === 0) return;
+  await usersCol().doc(user.uid).set(update, { merge: true });
+}
+
 export type ReportReason = 'spam' | 'harassment' | 'nudity' | 'violence' | 'other';
 export type ReportTarget =
   | { kind: 'video'; videoId: string; ownerId: string }

@@ -3,7 +3,7 @@ import auth from '@react-native-firebase/auth';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { commentsCol, follow, followingCol, unfollow, type VideoDoc } from '@/lib/firestore';
+import { commentsCol, follow, followingCol, savesCol, toggleSave, unfollow, type VideoDoc } from '@/lib/firestore';
 import { CommentsSheet } from '@/components/CommentsSheet';
 import { ShareToChatSheet } from '@/components/ShareToChatSheet';
 import { ReportSheet } from '@/components/ReportSheet';
@@ -26,6 +26,7 @@ export function FeedItem({
   const [showComments, setShowComments] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const player = useVideoPlayer(item.downloadURL, (p) => {
     p.loop = true;
@@ -53,6 +54,21 @@ export function FeedItem({
         () => setFollowing(false),
       );
   }, [me, item.ownerId]);
+
+  useEffect(() => {
+    if (!me) return;
+    return savesCol(me.uid)
+      .doc(item.id)
+      .onSnapshot(
+        (snap) => setSaved(snap.exists),
+        () => setSaved(false),
+      );
+  }, [me, item.id]);
+
+  async function handleSave() {
+    if (!me) return;
+    await toggleSave(item.id);
+  }
 
   async function toggleFollow() {
     if (!me || me.uid === item.ownerId) return;
@@ -97,6 +113,18 @@ export function FeedItem({
           >
             <Ionicons name="chatbubble-outline" size={28} color={colors.text} />
             <Text style={styles.actionLabel}>{commentCount}</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleSave}
+            style={styles.actionButton}
+            hitSlop={8}
+          >
+            <Ionicons
+              name={saved ? 'bookmark' : 'bookmark-outline'}
+              size={28}
+              color={saved ? colors.accent : colors.text}
+            />
+            <Text style={styles.actionLabel}>{saved ? 'Saved' : 'Save'}</Text>
           </Pressable>
           <Pressable
             onPress={() => setShowShare(true)}

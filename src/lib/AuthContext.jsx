@@ -1,7 +1,10 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
+  GoogleAuthProvider,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
 } from 'firebase/auth';
 import { firebaseAuth } from '@/lib/firebase';
@@ -10,29 +13,28 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     return onAuthStateChanged(firebaseAuth, async (u) => {
       if (u) {
         let tokenResult = await u.getIdTokenResult();
-        // If the admin claim is missing, force-refresh once — handles the case
-        // where the claim was just granted server-side and the cached token
-        // is stale.
-        if (tokenResult.claims.role !== 'admin') {
+        const knownRoles = ['admin', 'advertiser'];
+        // Force-refresh once if no known role yet — handles the case
+        // where a claim was just granted and the cached token is stale.
+        if (!knownRoles.includes(tokenResult.claims.role)) {
           try {
             tokenResult = await u.getIdTokenResult(true);
           } catch {
-            await signOut(firebaseAuth);
-            return;
+            // ignore — surface the user without a role; pages will gate
           }
         }
-        setIsAdmin(tokenResult.claims.role === 'admin');
+        setRole(tokenResult.claims.role ?? null);
         setUser(u);
       } else {
         setUser(null);
-        setIsAdmin(false);
+        setRole(null);
       }
       setLoading(false);
     });
@@ -41,10 +43,20 @@ export function AuthProvider({ children }) {
   const login = (email, password) =>
     signInWithEmailAndPassword(firebaseAuth, email, password);
 
+  const loginWithGoogle = () =>
+    signInWithPopup(firebaseAuth, new GoogleAuthProvider());
+
+  const sendReset = (email) => sendPasswordResetEmail(firebaseAuth, email);
+
   const logout = () => signOut(firebaseAuth);
 
+  const isAdmin = role === 'admin';
+  const isAdvertiser = role === 'advertiser';
+
   return (
-    <AuthContext.Provider value={{ user, isAdmin, loading, login, logout }}>
+    <AuthContext.Provider
+      value={{ user, role, isAdmin, isAdvertiser, loading, login, loginWithGoogle, sendReset, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );
