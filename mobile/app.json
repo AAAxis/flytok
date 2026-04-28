@@ -84,6 +84,14 @@
         }
       ],
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Flytok uses the camera to record travel videos.",
+          "microphonePermission": "Flytok records audio while you record videos.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "Flytok uses your location to show nearby places on the map."

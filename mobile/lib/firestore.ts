@@ -12,8 +12,24 @@ export type VideoDoc = {
   downloadURL: string;
   caption?: string;
   location?: VideoLocation | null;
+  hashtags?: string[];
   createdAt?: FirebaseFirestoreTypes.Timestamp;
 };
+
+export function extractHashtags(text: string): string[] {
+  const matches = text.match(/#[\p{L}\p{N}_]+/gu);
+  if (!matches) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of matches) {
+    const tag = m.slice(1).toLowerCase();
+    if (tag && !seen.has(tag)) {
+      seen.add(tag);
+      out.push(tag);
+    }
+  }
+  return out;
+}
 
 export type CommentDoc = {
   id: string;
@@ -232,10 +248,12 @@ export async function uploadVideo({
   uri,
   caption,
   location,
+  hashtags,
 }: {
   uri: string;
   caption: string;
   location?: VideoLocation | null;
+  hashtags?: string[];
 }) {
   const user = requireUser();
 
@@ -247,6 +265,8 @@ export async function uploadVideo({
   await ref.putFile(uri);
   const downloadURL = await ref.getDownloadURL();
 
+  const tags = hashtags ?? extractHashtags(caption);
+
   const doc = await videosCol().add({
     ownerId: user.uid,
     ownerEmail: user.email ?? null,
@@ -254,6 +274,7 @@ export async function uploadVideo({
     downloadURL,
     caption: caption.trim(),
     location: location ?? null,
+    hashtags: tags,
     createdAt: firestore.FieldValue.serverTimestamp(),
   });
 

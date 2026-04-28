@@ -126,12 +126,15 @@ function UploadVideoModal({ onClose }) {
   const fileInput = useRef(null);
   const [file, setFile] = useState(null);
   const [caption, setCaption] = useState('');
+  const [tagInput, setTagInput] = useState('');
+  const [tags, setTags] = useState([]);
   const [location, setLocation] = useState(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
 
   const upload = useMutation({
-    mutationFn: () => videosRepo.upload({ file, caption, location, onProgress: setProgress }),
+    mutationFn: () =>
+      videosRepo.upload({ file, caption, location, tags, onProgress: setProgress }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['videos'] });
       onClose();
@@ -211,6 +214,46 @@ function UploadVideoModal({ onClose }) {
             className="bg-zinc-950 border-zinc-800 text-zinc-100"
             disabled={upload.isPending}
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-zinc-400">Tags</Label>
+          <Input
+            value={tagInput}
+            onChange={(e) => setTagInput(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.key === 'Enter' || e.key === ',' || e.key === ' ') && tagInput.trim()) {
+                e.preventDefault();
+                const t = tagInput.trim().replace(/^#/, '').toLowerCase();
+                if (t && !tags.includes(t)) setTags([...tags, t]);
+                setTagInput('');
+              } else if (e.key === 'Backspace' && !tagInput && tags.length) {
+                setTags(tags.slice(0, -1));
+              }
+            }}
+            placeholder="travel, beach, japan… (Enter or comma to add)"
+            className="bg-zinc-950 border-zinc-800 text-zinc-100"
+            disabled={upload.isPending}
+          />
+          {tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {tags.map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex items-center gap-1 bg-sky-500/10 text-sky-300 text-xs px-2 py-1 rounded-md"
+                >
+                  #{t}
+                  <button
+                    type="button"
+                    onClick={() => setTags(tags.filter((x) => x !== t))}
+                    className="hover:text-sky-100"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="space-y-2">

@@ -1,0 +1,82 @@
+import * as Location from 'expo-location';
+
+export type GeoResult = {
+  label: string;
+  latitude: number;
+  longitude: number;
+};
+
+function placeLabel(p: Location.LocationGeocodedAddress, fallback?: string): string {
+  const parts = [p.name, p.city ?? p.subregion, p.region, p.country].filter(
+    (x): x is string => Boolean(x),
+  );
+  // dedupe consecutive duplicates (e.g., when name === city)
+  const out: string[] = [];
+  for (const part of parts) {
+    if (out[out.length - 1] !== part) out.push(part);
+  }
+  const label = out.join(', ');
+  return label || fallback || 'Unknown place';
+}
+
+export async function geocodeAddress(query: string, max = 5): Promise<GeoResult[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  const matches = await Location.geocodeAsync(trimmed);
+  if (!matches.length) return [];
+
+  // Reverse-geocode each candidate so we can show a friendly label.
+  const top = matches.slice(0, max);
+  const results = await Promise.all(
+    top.map(async (m) => {
+      try {
+        const places = await Location.reverseGeocodeAsync({
+          latitude: m.latitude,
+          longitude: m.longitude,
+        });
+        const place = places[0];
+        return {
+          latitude: m.latitude,
+          longitude: m.longitude,
+          label: place ? placeLabel(place, trimmed) : trimmed,
+        };
+      } catch {
+        return { latitude: m.latitude, longitude: m.longitude, label: trimmed };
+      }
+    }),
+  );
+
+  // Drop duplicates by label
+  const seen = new Set<string>();
+  return results.filter((r) => {
+    if (seen.has(r.label)) return false;
+    seen.add(r.label);
+    return true;
+  });
+}
+
+export async function getCurrentLocationLabeled(): Promise<GeoResult> {
+  const perm = await Location.requestForegroundPermissionsAsync();
+  if (!perm.granted) {
+    throw new Error('Location permission denied');
+  }
+  const pos = await Location.getCurrentPositionAsync({
+    accuracy: Location.Accuracy.Balanced,
+  });
+  let label = 'Current location';
+  try {
+    const places = await Location.reverseGeocodeAsync({
+      latitude: pos.coords.latitude,
+      longitude: pos.coords.longitude,
+    });
+    if (places[0]) label = placeLabel(places[0], label);
+  } catch {
+    // keep fallback label
+  }
+  return {
+    label,
+    latitude: pos.coords.latitude,
+    longitude: pos.coords.longitude,
+  };
+}

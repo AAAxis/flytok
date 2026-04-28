@@ -17,6 +17,12 @@ import { firebaseAuth, firebaseStorage, firestore } from '@/lib/firebase';
 
 const videosCol = () => collection(firestore, 'videos');
 
+function extractHashtagsFromCaption(text) {
+  if (!text) return [];
+  const matches = text.match(/#[\p{L}\p{N}_]+/gu) ?? [];
+  return Array.from(new Set(matches.map((m) => m.slice(1).toLowerCase())));
+}
+
 async function safeCount(col) {
   try {
     const snap = await getCountFromServer(col);
@@ -95,7 +101,7 @@ export const videosRepo = {
 
   // Uploads a video file to Storage and writes the Firestore doc.
   // onProgress receives a 0..1 fraction.
-  upload: async ({ file, caption = '', location = null, onProgress }) => {
+  upload: async ({ file, caption = '', location = null, tags = null, onProgress }) => {
     const user = firebaseAuth.currentUser;
     if (!user) throw new Error('Not signed in');
     if (!file) throw new Error('No file selected');
@@ -118,6 +124,10 @@ export const videosRepo = {
     });
     const downloadURL = await getDownloadURL(ref);
 
+    const computedTags = (tags ?? extractHashtagsFromCaption(caption))
+      .map((t) => t.toLowerCase())
+      .filter(Boolean);
+
     const docRef = await addDoc(videosCol(), {
       ownerId: user.uid,
       ownerEmail: user.email ?? null,
@@ -125,6 +135,7 @@ export const videosRepo = {
       downloadURL,
       caption: caption.trim(),
       location,
+      hashtags: computedTags,
       createdAt: serverTimestamp(),
       adminUploaded: true,
     });

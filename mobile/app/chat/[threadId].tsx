@@ -97,12 +97,12 @@ export default function ChatThread() {
           headerBackTitle: 'Inbox',
         }}
       />
-      <SafeAreaView style={styles.safe} edges={['bottom']}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.flex}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
-        >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.safe}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 96 : 0}
+      >
+        <SafeAreaView style={styles.flex} edges={['bottom']}>
           <FlatList
             ref={listRef}
             data={messages}
@@ -149,8 +149,8 @@ export default function ChatThread() {
               )}
             </Pressable>
           </View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
     </>
   );
 }
