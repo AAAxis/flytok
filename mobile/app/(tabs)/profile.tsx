@@ -101,18 +101,17 @@ export default function Profile() {
               </Pressable>
 
               <Text style={styles.displayName}>{displayName ?? handle}</Text>
-              <Text style={styles.email}>{me.email ?? ''}</Text>
+              {me.email ? (
+                <View style={styles.emailPill}>
+                  <Text style={styles.emailText}>{me.email}</Text>
+                </View>
+              ) : null}
 
               {bio ? <Text style={styles.bio}>{bio}</Text> : null}
 
               <View style={styles.statsRow}>
                 <Stat label="Posts" value={mine.length} />
-                <Stat label="Saved" value={saved.length} />
               </View>
-
-              <Pressable onPress={() => setShowEdit(true)} style={styles.editBtn}>
-                <Text style={styles.editBtnText}>Edit profile</Text>
-              </Pressable>
             </View>
 
             <View style={styles.tabsBar}>
@@ -215,22 +214,19 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   displayName: { color: colors.text, fontSize: 18, fontWeight: '700', marginTop: 12 },
-  email: { color: colors.text, fontSize: 13, marginTop: 4, fontWeight: '500' },
+  emailPill: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    backgroundColor: '#ffffff',
+    borderRadius: 999,
+  },
+  emailText: { color: '#000000', fontSize: 13, fontWeight: '600' },
   bio: { color: colors.textMuted, fontSize: 13, textAlign: 'center', marginTop: 10, paddingHorizontal: 24 },
   statsRow: { flexDirection: 'row', gap: 32, marginTop: 16 },
   stat: { alignItems: 'center' },
   statValue: { color: colors.text, fontSize: 16, fontWeight: '700' },
   statLabel: { color: colors.textDim, fontSize: 12 },
-  editBtn: {
-    marginTop: 16,
-    paddingHorizontal: 24,
-    paddingVertical: 8,
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 8,
-  },
-  editBtnText: { color: colors.text, fontSize: 13, fontWeight: '500' },
   tabsBar: {
     flexDirection: 'row',
     borderTopColor: colors.border,
