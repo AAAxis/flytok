@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import auth from '@react-native-firebase/auth';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Image,
@@ -15,6 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
   diagnoseSaves,
+  followersCol,
+  followingCol,
   getFollowCounts,
   getMyVideos,
   getSavedVideoIds,
@@ -34,6 +36,7 @@ import { colors } from '@/lib/theme';
 type Tab = 'mine' | 'saved';
 
 export default function Profile() {
+  const router = useRouter();
   const me = auth().currentUser;
   const cached = me ? getCachedProfile(me.uid) : null;
   const [displayName, setDisplayName] = useState<string | null>(cached?.displayName ?? null);
@@ -118,6 +121,24 @@ export default function Profile() {
         );
       }
     });
+  }, [me]);
+
+  // Live-update follow counts so following/unfollowing in the feed reflects
+  // immediately on this screen without requiring a pull-to-refresh.
+  useEffect(() => {
+    if (!me) return;
+    return followingCol(me.uid).onSnapshot(
+      (snap) => setCounts((c) => ({ ...c, following: snap.size })),
+      () => {},
+    );
+  }, [me]);
+
+  useEffect(() => {
+    if (!me) return;
+    return followersCol(me.uid).onSnapshot(
+      (snap) => setCounts((c) => ({ ...c, followers: snap.size })),
+      () => {},
+    );
   }, [me]);
 
   // Live-update the Saved tab whenever the user saves/unsaves anywhere in the app.
@@ -230,9 +251,21 @@ export default function Profile() {
             </View>
 
             {tab === 'mine' ? (
-              <VideoGrid videos={mine} emptyLabel="No videos yet" />
+              <VideoGrid
+                videos={mine}
+                emptyLabel="No videos yet"
+                onPress={(v) => {
+                  router.push(`/posts/${me.uid}?start=${v.id}&source=mine` as never);
+                }}
+              />
             ) : (
-              <VideoGrid videos={saved} emptyLabel="Nothing saved yet" />
+              <VideoGrid
+                videos={saved}
+                emptyLabel="Nothing saved yet"
+                onPress={(v) => {
+                  router.push(`/posts/${me.uid}?start=${v.id}&source=saved` as never);
+                }}
+              />
             )}
           </>
         )}

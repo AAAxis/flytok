@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import { Alert, Dimensions, Image, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -14,15 +14,17 @@ import { ReportSheet } from '@/components/ReportSheet';
 import { EditCaptionSheet } from '@/components/EditCaptionSheet';
 import { colors } from '@/lib/theme';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 export function FeedItem({
   item,
   active,
+  height,
   onBlocked,
 }: {
   item: VideoDoc;
   active: boolean;
+  height: number;
   onBlocked?: (uid: string) => void;
 }) {
   const me = auth().currentUser;
@@ -36,6 +38,19 @@ export function FeedItem({
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(Math.max(0, item.likeCount ?? 0));
   const [holding, setHolding] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [scrubbing, setScrubbing] = useState(false);
+  const trackWidthRef = useRef(0);
+  const wasPlayingRef = useRef(false);
+
+  function seekToFraction(fraction: number) {
+    const f = Math.min(1, Math.max(0, fraction));
+    const dur = player.duration ?? 0;
+    if (dur > 0) {
+      player.currentTime = dur * f;
+      setProgress(f);
+    }
+  }
 
   const cachedUri = useCachedVideoUri(item.downloadURL);
   const player = useVideoPlayer(cachedUri ?? item.downloadURL, (p) => {
@@ -47,6 +62,24 @@ export function FeedItem({
     if (active) player.play();
     else player.pause();
   }, [active, player]);
+
+  // Lightweight playback timeline — polls 4×/sec while the slide is active.
+  // Pauses while the user is scrubbing so the polled value doesn't fight the
+  // dragged thumb.
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => {
+      if (scrubbing) return;
+      try {
+        const dur = player.duration ?? 0;
+        const cur = player.currentTime ?? 0;
+        if (dur > 0) setProgress(Math.min(1, Math.max(0, cur / dur)));
+      } catch {
+        // player may not be ready yet — ignore
+      }
+    }, 250);
+    return () => clearInterval(id);
+  }, [active, player, scrubbing]);
 
   useEffect(() => {
     return commentsCol(item.id).onSnapshot(
@@ -136,11 +169,15 @@ export function FeedItem({
   }
 
   return (
-    <View style={styles.item}>
+    <View style={[styles.item, { height }]}>
       <Pressable
+        onPress={() => {
+          // Single tap toggles play/pause.
+          if (player.playing) player.pause();
+          else player.play();
+        }}
         onLongPress={() => {
-          // TikTok-style: only a press-and-hold pauses. Quick taps do nothing
-          // so the user can scroll/tap UI elements without stuttering.
+          // Press-and-hold pauses while held, resumes on release.
           player.pause();
           setHolding(true);
         }}
@@ -149,16 +186,53 @@ export function FeedItem({
           setHolding(false);
           if (active) player.play();
         }}
-        delayLongPress={180}
+        delayLongPress={220}
         style={styles.fill}
       >
-        <VideoView player={player} style={styles.video} contentFit="cover" nativeControls={false} />
+        <VideoView player={player} style={[styles.video, { height }]} contentFit="cover" nativeControls={false} />
       </Pressable>
       {holding && (
         <View style={styles.holdIndicator} pointerEvents="none">
           <Ionicons name="pause" size={64} color="rgba(255,255,255,0.85)" />
         </View>
       )}
+
+      <View
+        style={styles.progressHitArea}
+        onLayout={(e) => {
+          trackWidthRef.current = e.nativeEvent.layout.width;
+        }}
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={(e) => {
+          wasPlayingRef.current = !!player.playing;
+          player.pause();
+          setScrubbing(true);
+          if (trackWidthRef.current > 0) {
+            seekToFraction(e.nativeEvent.locationX / trackWidthRef.current);
+          }
+        }}
+        onResponderMove={(e) => {
+          if (trackWidthRef.current > 0) {
+            seekToFraction(e.nativeEvent.locationX / trackWidthRef.current);
+          }
+        }}
+        onResponderRelease={() => {
+          setScrubbing(false);
+          if (active && wasPlayingRef.current) player.play();
+        }}
+        onResponderTerminate={() => {
+          setScrubbing(false);
+          if (active && wasPlayingRef.current) player.play();
+        }}
+      >
+        <View style={[styles.progressTrack, scrubbing && styles.progressTrackActive]}>
+          <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+          {scrubbing && (
+            <View style={[styles.progressThumb, { left: `${progress * 100}%` }]} />
+          )}
+        </View>
+      </View>
 
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.bottomLeft}>
@@ -313,13 +387,42 @@ export function FeedItem({
 }
 
 const styles = StyleSheet.create({
-  item: { width, height, backgroundColor: '#000' },
+  item: { width, backgroundColor: '#000' },
   fill: { ...StyleSheet.absoluteFillObject },
-  video: { width, height },
+  video: { width },
   holdIndicator: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  progressHitArea: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 24,
+    justifyContent: 'flex-end',
+  },
+  progressTrack: {
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  progressTrackActive: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+  },
+  progressThumb: {
+    position: 'absolute',
+    top: -6,
+    width: 14,
+    height: 14,
+    marginLeft: -7,
+    borderRadius: 7,
+    backgroundColor: '#fff',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,

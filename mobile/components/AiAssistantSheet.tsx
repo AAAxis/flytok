@@ -69,14 +69,19 @@ export function AiAssistantSheet({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.kav}
-      >
-        <Pressable style={styles.backdrop} onPress={onClose} />
-        <SafeAreaView style={styles.sheet} edges={['bottom']}>
-          <View style={styles.handle} />
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={styles.sheet}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.kav}
+        >
+          <SafeAreaView edges={['top']} style={styles.topInset} />
           <View style={styles.header}>
             <View style={styles.titleRow}>
               <Ionicons name="sparkles" size={16} color={colors.accent} />
@@ -136,21 +141,20 @@ export function AiAssistantSheet({
               <Ionicons name="arrow-up" size={18} color={colors.bg} />
             </Pressable>
           </View>
-        </SafeAreaView>
-      </KeyboardAvoidingView>
+          <SafeAreaView edges={['bottom']} />
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  kav: { flex: 1 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    maxHeight: '80%',
-    minHeight: '60%',
+  kav: { flex: 1, backgroundColor: colors.bg },
+  sheet: { flex: 1, backgroundColor: colors.bg },
+  topInset: {
+    // Hardcoded fallback for iOS notch in case SafeAreaView returns 0 inside
+    // the Modal scene (no SafeAreaProvider in this tree).
+    minHeight: Platform.OS === 'ios' ? 50 : 24,
   },
   handle: {
     width: 36,

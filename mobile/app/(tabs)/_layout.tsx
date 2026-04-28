@@ -23,15 +23,6 @@ export default function TabsLayout() {
         options={{
           title: 'Feed',
           tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
-          // Feed-only: float the tab bar over the video so each clip renders
-          // edge-to-edge (TikTok-style). Other tabs keep the solid tab bar.
-          tabBarStyle: {
-            position: 'absolute',
-            backgroundColor: 'rgba(0,0,0,0.55)',
-            borderTopColor: 'transparent',
-            elevation: 0,
-          },
-          tabBarBackground: () => null,
         }}
       />
       <Tabs.Screen

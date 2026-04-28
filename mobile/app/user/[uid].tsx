@@ -11,22 +11,24 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   follow,
+  followersCol,
   followingCol,
-  getFollowCounts,
   getMyVideos,
   unfollow,
   type VideoDoc,
 } from '@/lib/firestore';
 import { useUserLabel, useUserProfile } from '@/lib/useUserLabel';
 import { VideoGrid } from '@/components/VideoGrid';
+import { FollowListSheet } from '@/components/FollowListSheet';
 import { colors } from '@/lib/theme';
 
 export default function UserProfile() {
   const { uid } = useLocalSearchParams<{ uid: string }>();
   const me = auth().currentUser;
+  const router = useRouter();
   const profile = useUserProfile(uid);
   const handle = useUserLabel(uid);
 
@@ -35,22 +37,37 @@ export default function UserProfile() {
   const [following, setFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [followList, setFollowList] = useState<null | 'following' | 'followers'>(null);
 
   const isMe = me?.uid === uid;
 
   const load = useCallback(async () => {
     if (!uid) return;
-    const [list, c] = await Promise.all([
-      getMyVideos(uid).catch(() => []),
-      getFollowCounts(uid),
-    ]);
+    const list = await getMyVideos(uid).catch(() => []);
     setVideos(list);
-    setCounts(c);
   }, [uid]);
 
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, [load]);
+
+  // Live-update following count from this user's /following subcollection.
+  useEffect(() => {
+    if (!uid) return;
+    return followingCol(uid).onSnapshot(
+      (snap) => setCounts((c) => ({ ...c, following: snap.size })),
+      () => {},
+    );
+  }, [uid]);
+
+  // Live-update followers count from this user's /followers subcollection.
+  useEffect(() => {
+    if (!uid) return;
+    return followersCol(uid).onSnapshot(
+      (snap) => setCounts((c) => ({ ...c, followers: snap.size })),
+      () => {},
+    );
+  }, [uid]);
 
   useEffect(() => {
     if (!me || !uid || isMe) return;
@@ -90,7 +107,8 @@ export default function UserProfile() {
           headerStyle: { backgroundColor: colors.bg },
           headerTitleStyle: { color: colors.text },
           headerTintColor: colors.text,
-          headerBackTitle: 'Back',
+          headerBackTitle: '',
+          headerBackButtonDisplayMode: 'minimal',
         }}
       />
 
@@ -109,8 +127,16 @@ export default function UserProfile() {
 
           <View style={styles.statsRow}>
             <Stat label="Posts" value={videos.length} />
-            <Stat label="Following" value={counts.following} />
-            <Stat label="Followers" value={counts.followers} />
+            <Stat
+              label="Following"
+              value={counts.following}
+              onPress={() => setFollowList('following')}
+            />
+            <Stat
+              label="Followers"
+              value={counts.followers}
+              onPress={() => setFollowList('followers')}
+            />
           </View>
 
           {!isMe && (
@@ -143,19 +169,46 @@ export default function UserProfile() {
             <ActivityIndicator color={colors.accent} />
           </View>
         ) : (
-          <VideoGrid videos={videos} emptyLabel="No posts yet" />
+          <VideoGrid
+            videos={videos}
+            emptyLabel="No posts yet"
+            onPress={(v) => {
+              router.push(`/posts/${uid}?start=${v.id}&source=mine` as never);
+            }}
+          />
         )}
       </ScrollView>
+
+      <FollowListSheet
+        uid={uid}
+        mode={followList ?? 'following'}
+        visible={followList !== null}
+        onClose={() => setFollowList(null)}
+      />
     </SafeAreaView>
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <View style={styles.stat}>
+function Stat({
+  label,
+  value,
+  onPress,
+}: {
+  label: string;
+  value: number;
+  onPress?: () => void;
+}) {
+  const content = (
+    <>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-    </View>
+    </>
+  );
+  if (!onPress) return <View style={styles.stat}>{content}</View>;
+  return (
+    <Pressable onPress={onPress} hitSlop={6} style={styles.stat}>
+      {content}
+    </Pressable>
   );
 }
 

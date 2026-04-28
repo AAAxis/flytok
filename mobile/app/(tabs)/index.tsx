@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Dimensions,
   FlatList,
+  LayoutChangeEvent,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -23,7 +24,7 @@ import { AiAssistantSheet } from '@/components/AiAssistantSheet';
 import { prefetchVideos } from '@/lib/videoCache';
 import { colors } from '@/lib/theme';
 
-const { height } = Dimensions.get('window');
+const FALLBACK_HEIGHT = Dimensions.get('window').height;
 
 type FeedTab = 'trending' | 'following';
 
@@ -40,6 +41,12 @@ export default function Feed() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(FALLBACK_HEIGHT);
+
+  function onContainerLayout(e: LayoutChangeEvent) {
+    const h = e.nativeEvent.layout.height;
+    if (h > 0 && h !== viewportHeight) setViewportHeight(h);
+  }
 
   const load = useCallback(async () => {
     const blockedIds = await getBlockedIds();
@@ -119,7 +126,7 @@ export default function Feed() {
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
 
   return (
-    <View style={styles.root}>
+    <View style={styles.root} onLayout={onContainerLayout}>
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
@@ -140,10 +147,20 @@ export default function Feed() {
           data={videos}
           keyExtractor={(item) => item.id}
           renderItem={({ item, index }) => (
-            <FeedItem item={item} active={index === activeIndex} onBlocked={handleBlocked} />
+            <FeedItem
+              item={item}
+              active={index === activeIndex}
+              height={viewportHeight}
+              onBlocked={handleBlocked}
+            />
           )}
           pagingEnabled
-          snapToInterval={height}
+          snapToInterval={viewportHeight}
+          getItemLayout={(_, i) => ({
+            length: viewportHeight,
+            offset: viewportHeight * i,
+            index: i,
+          })}
           decelerationRate="fast"
           showsVerticalScrollIndicator={false}
           onViewableItemsChanged={onViewableItemsChanged}
