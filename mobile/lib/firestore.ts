@@ -1,6 +1,7 @@
 import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
 import storage from '@react-native-firebase/storage';
 import auth from '@react-native-firebase/auth';
+import { track } from './analytics';
 
 export type VideoLocation = { latitude: number; longitude: number; label?: string };
 
@@ -13,6 +14,7 @@ export type VideoDoc = {
   caption?: string;
   location?: VideoLocation | null;
   hashtags?: string[];
+  likeCount?: number;
   createdAt?: FirebaseFirestoreTypes.Timestamp;
 };
 
@@ -26,6 +28,21 @@ export function extractHashtags(text: string): string[] {
     if (tag && !seen.has(tag)) {
       seen.add(tag);
       out.push(tag);
+    }
+  }
+  return out;
+}
+
+export function extractMentions(text: string): string[] {
+  const matches = text.match(/@[a-zA-Z0-9_.\-]+/g);
+  if (!matches) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of matches) {
+    const handle = m.slice(1).toLowerCase();
+    if (handle && !seen.has(handle)) {
+      seen.add(handle);
+      out.push(handle);
     }
   }
   return out;
@@ -72,15 +89,48 @@ export function savesCol(uid: string) {
   return usersCol().doc(uid).collection('saves');
 }
 
+export function likesCol(videoId: string) {
+  return videosCol().doc(videoId).collection('likes');
+}
+
+export async function toggleLike(videoId: string): Promise<boolean> {
+  const user = requireUser();
+  const videoRef = videosCol().doc(videoId);
+  const likeRef = likesCol(videoId).doc(user.uid);
+
+  const snap = await likeRef.get();
+  if (snap.exists) {
+    await Promise.all([
+      likeRef.delete(),
+      videoRef.set(
+        { likeCount: firestore.FieldValue.increment(-1) },
+        { merge: true },
+      ),
+    ]);
+    return false;
+  }
+  await Promise.all([
+    likeRef.set({ createdAt: firestore.FieldValue.serverTimestamp() }),
+    videoRef.set(
+      { likeCount: firestore.FieldValue.increment(1) },
+      { merge: true },
+    ),
+  ]);
+  track.videoLiked(videoId);
+  return true;
+}
+
 export async function toggleSave(videoId: string) {
   const user = requireUser();
   const ref = savesCol(user.uid).doc(videoId);
   const snap = await ref.get();
   if (snap.exists) {
     await ref.delete();
+    track.videoSaved(videoId, false);
     return false;
   }
   await ref.set({ createdAt: firestore.FieldValue.serverTimestamp() });
+  track.videoSaved(videoId, true);
   return true;
 }
 
@@ -147,6 +197,7 @@ export async function reportContent(target: ReportTarget, reason: ReportReason, 
     status: 'open',
     createdAt: firestore.FieldValue.serverTimestamp(),
   });
+  track.reportSubmitted(target.kind, reason);
 }
 
 export async function blockUser(targetUid: string) {
@@ -167,6 +218,44 @@ export async function getBlockedIds() {
   if (!user) return new Set<string>();
   const snap = await blockedCol(user.uid).get();
   return new Set(snap.docs.map((d) => d.id));
+}
+
+export async function deleteOwnVideo(video: VideoDoc) {
+  const user = requireUser();
+  const tokenResult = await user.getIdTokenResult();
+  const isAdmin = tokenResult.claims.role === 'admin';
+  if (!isAdmin && user.uid !== video.ownerId) throw new Error('Not your video');
+  if (video.storagePath) {
+    try {
+      await storage().ref(video.storagePath).delete();
+    } catch (err: any) {
+      if (err?.code !== 'storage/object-not-found') {
+        // continue — don't block the doc delete on a stuck storage object
+      }
+    }
+  }
+  await videosCol().doc(video.id).delete();
+}
+
+export async function updateOwnVideoCaption(
+  videoId: string,
+  caption: string,
+  hashtags?: string[],
+) {
+  const user = requireUser();
+  const ref = videosCol().doc(videoId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error('Video not found');
+  const data = snap.data();
+  const tokenResult = await user.getIdTokenResult();
+  const isAdmin = tokenResult.claims.role === 'admin';
+  if (!isAdmin && data?.ownerId !== user.uid) throw new Error('Not your video');
+  const tags = hashtags ?? extractHashtags(caption);
+  await ref.update({
+    caption: caption.trim(),
+    hashtags: tags,
+    updatedAt: firestore.FieldValue.serverTimestamp(),
+  });
 }
 
 export async function deleteAccount() {
@@ -230,6 +319,32 @@ function requireUser() {
   return u;
 }
 
+// In-memory cache for user display names. Avoids one read per chat row.
+const userLabelCache = new Map<string, string>();
+
+export function getCachedUserLabel(uid: string | null | undefined): string | null {
+  if (!uid) return null;
+  return userLabelCache.get(uid) ?? null;
+}
+
+export async function getUserLabel(uid: string): Promise<string> {
+  if (!uid) return 'user';
+  const cached = userLabelCache.get(uid);
+  if (cached) return cached;
+  try {
+    const snap = await usersCol().doc(uid).get();
+    const data = snap.data() ?? {};
+    const label =
+      (data.displayName as string | undefined)?.trim() ||
+      (data.username as string | undefined)?.trim() ||
+      `User ${uid.slice(0, 6)}`;
+    userLabelCache.set(uid, label);
+    return label;
+  } catch {
+    return `User ${uid.slice(0, 6)}`;
+  }
+}
+
 export async function ensureUserDoc() {
   const u = requireUser();
   await usersCol().doc(u.uid).set(
@@ -249,11 +364,13 @@ export async function uploadVideo({
   caption,
   location,
   hashtags,
+  mentions,
 }: {
   uri: string;
   caption: string;
   location?: VideoLocation | null;
   hashtags?: string[];
+  mentions?: string[];
 }) {
   const user = requireUser();
 
@@ -266,6 +383,7 @@ export async function uploadVideo({
   const downloadURL = await ref.getDownloadURL();
 
   const tags = hashtags ?? extractHashtags(caption);
+  const handles = mentions ?? extractMentions(caption);
 
   const doc = await videosCol().add({
     ownerId: user.uid,
@@ -275,7 +393,13 @@ export async function uploadVideo({
     caption: caption.trim(),
     location: location ?? null,
     hashtags: tags,
+    mentions: handles,
     createdAt: firestore.FieldValue.serverTimestamp(),
+  });
+
+  track.videoUploaded({
+    hasLocation: !!location,
+    hashtagCount: tags.length,
   });
 
   return { id: doc.id, storagePath, downloadURL };
@@ -289,6 +413,7 @@ export async function postComment(videoId: string, text: string) {
     text: text.trim(),
     createdAt: firestore.FieldValue.serverTimestamp(),
   });
+  track.commentPosted(videoId);
 }
 
 export async function follow(targetUid: string) {
@@ -299,6 +424,7 @@ export async function follow(targetUid: string) {
     followingCol(user.uid).doc(targetUid).set({ createdAt: ts }),
     followersCol(targetUid).doc(user.uid).set({ createdAt: ts }),
   ]);
+  track.followAdded(targetUid);
 }
 
 export async function unfollow(targetUid: string) {
@@ -307,6 +433,7 @@ export async function unfollow(targetUid: string) {
     followingCol(user.uid).doc(targetUid).delete(),
     followersCol(targetUid).doc(user.uid).delete(),
   ]);
+  track.followRemoved(targetUid);
 }
 
 export async function uploadProfilePhoto(uri: string): Promise<string> {
@@ -325,6 +452,7 @@ export async function uploadProfilePhoto(uri: string): Promise<string> {
   } catch {
     // Auth profile mirror is best-effort
   }
+  track.profilePhotoChanged();
   return downloadURL;
 }
 
@@ -332,7 +460,9 @@ export async function ensureThread(otherUid: string, otherEmail: string | null) 
   const user = requireUser();
   if (user.uid === otherUid) throw new Error('Cannot chat with yourself');
   const id = threadIdFor(user.uid, otherUid);
-  await threadsCol().doc(id).set(
+  const ref = threadsCol().doc(id);
+  const existed = (await ref.get()).exists;
+  await ref.set(
     {
       participants: [user.uid, otherUid].sort(),
       participantEmails: {
@@ -342,6 +472,7 @@ export async function ensureThread(otherUid: string, otherEmail: string | null) 
     },
     { merge: true },
   );
+  if (!existed) track.chatStarted(id);
   return id;
 }
 
@@ -362,6 +493,7 @@ export async function sendTextMessage(threadId: string, text: string) {
     },
     { merge: true },
   );
+  track.messageSent(threadId, 'text');
 }
 
 export async function sendVideoCard(threadId: string, video: VideoDoc) {
@@ -382,4 +514,5 @@ export async function sendVideoCard(threadId: string, video: VideoDoc) {
     },
     { merge: true },
   );
+  track.messageSent(threadId, 'video_card');
 }

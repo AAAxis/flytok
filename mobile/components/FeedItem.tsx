@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import auth from '@react-native-firebase/auth';
-import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Dimensions, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { commentsCol, follow, followingCol, savesCol, toggleSave, unfollow, type VideoDoc } from '@/lib/firestore';
+import { commentsCol, deleteOwnVideo, follow, followingCol, likesCol, savesCol, toggleLike, toggleSave, unfollow, type VideoDoc } from '@/lib/firestore';
+import { useAuth } from '@/lib/AuthContext';
+import { useCachedVideoUri } from '@/lib/videoCache';
 import { CommentsSheet } from '@/components/CommentsSheet';
 import { ShareToChatSheet } from '@/components/ShareToChatSheet';
 import { ReportSheet } from '@/components/ReportSheet';
+import { EditCaptionSheet } from '@/components/EditCaptionSheet';
 import { colors } from '@/lib/theme';
 
 const { width, height } = Dimensions.get('window');
@@ -26,9 +29,13 @@ export function FeedItem({
   const [showComments, setShowComments] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(item.likeCount ?? 0);
 
-  const player = useVideoPlayer(item.downloadURL, (p) => {
+  const cachedUri = useCachedVideoUri(item.downloadURL);
+  const player = useVideoPlayer(cachedUri ?? item.downloadURL, (p) => {
     p.loop = true;
     p.muted = false;
   });
@@ -65,9 +72,34 @@ export function FeedItem({
       );
   }, [me, item.id]);
 
+  useEffect(() => {
+    if (!me) return;
+    return likesCol(item.id)
+      .doc(me.uid)
+      .onSnapshot(
+        (snap) => setLiked(snap.exists),
+        () => setLiked(false),
+      );
+  }, [me, item.id]);
+
   async function handleSave() {
     if (!me) return;
     await toggleSave(item.id);
+  }
+
+  async function handleLike() {
+    if (!me) return;
+    // optimistic
+    const next = !liked;
+    setLiked(next);
+    setLikeCount((c) => Math.max(0, c + (next ? 1 : -1)));
+    try {
+      await toggleLike(item.id);
+    } catch {
+      // revert on failure
+      setLiked(!next);
+      setLikeCount((c) => Math.max(0, c + (next ? -1 : 1)));
+    }
   }
 
   async function toggleFollow() {
@@ -76,7 +108,9 @@ export function FeedItem({
     else await follow(item.ownerId);
   }
 
+  const { isAdmin } = useAuth();
   const isOwner = me?.uid === item.ownerId;
+  const canManage = isOwner || isAdmin;
 
   return (
     <View style={styles.item}>
@@ -106,6 +140,14 @@ export function FeedItem({
         </View>
 
         <View style={styles.actions}>
+          <Pressable onPress={handleLike} style={styles.actionButton} hitSlop={8}>
+            <Ionicons
+              name={liked ? 'heart' : 'heart-outline'}
+              size={32}
+              color={liked ? '#ff3b5c' : colors.text}
+            />
+            <Text style={styles.actionLabel}>{likeCount}</Text>
+          </Pressable>
           <Pressable
             onPress={() => setShowComments(true)}
             style={styles.actionButton}
@@ -127,22 +169,66 @@ export function FeedItem({
             <Text style={styles.actionLabel}>{saved ? 'Saved' : 'Save'}</Text>
           </Pressable>
           <Pressable
-            onPress={() => setShowShare(true)}
+            onPress={async () => {
+              const link = `https://flytok.vercel.app/v/${item.id}`;
+              const message = item.caption ? `${item.caption}\n\n${link}` : link;
+              try {
+                await Share.share({ message, url: link });
+              } catch {
+                // user cancelled
+              }
+            }}
+            onLongPress={() => setShowShare(true)}
             style={styles.actionButton}
             hitSlop={8}
           >
             <Ionicons name="paper-plane-outline" size={28} color={colors.text} />
             <Text style={styles.actionLabel}>Share</Text>
           </Pressable>
-          {!isOwner && (
-            <Pressable
-              onPress={() => setShowReport(true)}
-              style={styles.actionButton}
-              hitSlop={8}
-            >
-              <Ionicons name="ellipsis-horizontal" size={28} color={colors.text} />
-            </Pressable>
-          )}
+          <Pressable
+            onPress={() => {
+              if (canManage) {
+                Alert.alert('Post', undefined, [
+                  { text: 'Edit caption', onPress: () => setShowEdit(true) },
+                  {
+                    text: 'Delete post',
+                    style: 'destructive',
+                    onPress: () => {
+                      Alert.alert(
+                        'Delete this post?',
+                        'This permanently removes the video. This cannot be undone.',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: async () => {
+                              try {
+                                await deleteOwnVideo(item);
+                                onBlocked?.(item.ownerId); // re-use to remove from feed
+                              } catch (err: any) {
+                                Alert.alert(
+                                  'Could not delete',
+                                  err?.message ?? 'Try again later.',
+                                );
+                              }
+                            },
+                          },
+                        ],
+                      );
+                    },
+                  },
+                  { text: 'Cancel', style: 'cancel' },
+                ]);
+              } else {
+                setShowReport(true);
+              }
+            }}
+            style={styles.actionButton}
+            hitSlop={8}
+          >
+            <Ionicons name="ellipsis-horizontal" size={28} color={colors.text} />
+          </Pressable>
         </View>
       </View>
 
@@ -162,6 +248,12 @@ export function FeedItem({
         visible={showReport}
         onClose={() => setShowReport(false)}
         onBlocked={() => onBlocked?.(item.ownerId)}
+      />
+      <EditCaptionSheet
+        visible={showEdit}
+        videoId={item.id}
+        initialCaption={item.caption ?? ''}
+        onClose={() => setShowEdit(false)}
       />
     </View>
   );

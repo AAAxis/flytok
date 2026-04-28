@@ -7,6 +7,7 @@ import {
   requestTrackingPermissionsAsync,
 } from 'expo-tracking-transparency';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import { setUserProperty } from '@/lib/analytics';
 import { colors } from '@/lib/theme';
 
 function useTrackingPrompt() {
@@ -18,8 +19,13 @@ function useTrackingPrompt() {
     async function ask() {
       try {
         const current = await getTrackingPermissionsAsync();
-        if (cancelled || current.status !== 'undetermined') return;
-        await requestTrackingPermissionsAsync();
+        if (cancelled) return;
+        let status = current.status;
+        if (status === 'undetermined') {
+          const result = await requestTrackingPermissionsAsync();
+          status = result.status;
+        }
+        setUserProperty('att_status', status);
       } catch {
         // ATT prompt is best-effort; ignore failures
       }

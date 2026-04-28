@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/AuthContext';
 import { colors } from '@/lib/theme';
 import { ensureGoogleConfigured } from '@/lib/google-signin';
+import { track } from '@/lib/analytics';
 
 type Provider = 'email' | 'google' | 'apple';
 
@@ -54,7 +55,9 @@ export default function Login() {
       const idToken = (result as any)?.data?.idToken ?? (result as any)?.idToken;
       if (!idToken) throw new Error('Google sign-in did not return an ID token');
       const credential = auth.GoogleAuthProvider.credential(idToken);
-      await auth().signInWithCredential(credential);
+      const cred = await auth().signInWithCredential(credential);
+      track.login('google');
+      if (cred.additionalUserInfo?.isNewUser) track.signup('google');
     } catch (err: any) {
       if (err?.code !== 'SIGN_IN_CANCELLED' && err?.code !== '-5') {
         setError(err?.message ?? 'Google sign-in failed');
@@ -80,7 +83,9 @@ export default function Login() {
         // expo-apple-authentication does not return a nonce; firebase accepts undefined here
         undefined as unknown as string,
       );
-      await auth().signInWithCredential(fbCredential);
+      const cred = await auth().signInWithCredential(fbCredential);
+      track.login('apple');
+      if (cred.additionalUserInfo?.isNewUser) track.signup('apple');
     } catch (err: any) {
       if (err?.code !== 'ERR_REQUEST_CANCELED') {
         setError(err?.message ?? 'Apple sign-in failed');
@@ -100,8 +105,8 @@ export default function Login() {
       >
         <View style={styles.container}>
           <View style={styles.logoRow}>
-            <Text style={styles.logoFly}>Fly</Text>
-            <Text style={styles.logoTok}>Tok</Text>
+            <Text style={styles.logoFly}>Roam</Text>
+            <Text style={styles.logoTok}>rez</Text>
           </View>
           <Text style={styles.tagline}>Travel videos for the curious.</Text>
 

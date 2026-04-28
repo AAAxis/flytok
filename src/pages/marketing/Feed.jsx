@@ -141,7 +141,7 @@ function FeedSlide({ video, active, muted, onToggleMute, setRef }) {
             onClick={async () => {
               const url = `${window.location.origin}/v/${video.id}`;
               try {
-                if (navigator.share) await navigator.share({ url, title: 'Flytok video' });
+                if (navigator.share) await navigator.share({ url, title: 'Roamrez video' });
                 else {
                   await navigator.clipboard.writeText(url);
                   alert('Link copied');

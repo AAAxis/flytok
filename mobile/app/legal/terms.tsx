@@ -17,16 +17,16 @@ export default function Terms() {
       />
       <SafeAreaView style={styles.safe} edges={['bottom']}>
         <ScrollView contentContainerStyle={styles.content}>
-          <Text style={styles.h2}>Welcome to Flytok</Text>
+          <Text style={styles.h2}>Welcome to Roamrez</Text>
           <Text style={styles.p}>
-            By creating a Flytok account or using the app, you agree to these terms. If you don't
-            agree, don't use Flytok.
+            By creating a Roamrez account or using the app, you agree to these terms. If you don't
+            agree, don't use Roamrez.
           </Text>
 
           <Text style={styles.h2}>Your account</Text>
           <Text style={styles.p}>
             You are responsible for activity on your account and for the content you upload. Don't
-            share your password. You must be at least 13 years old to use Flytok.
+            share your password. You must be at least 13 years old to use Roamrez.
           </Text>
 
           <Text style={styles.h2}>Content rules</Text>
@@ -50,7 +50,7 @@ export default function Terms() {
 
           <Text style={styles.h2}>Disclaimer</Text>
           <Text style={styles.p}>
-            Flytok is provided "as is" without warranties. We are not liable for damages arising
+            Roamrez is provided "as is" without warranties. We are not liable for damages arising
             from your use of the service.
           </Text>
 

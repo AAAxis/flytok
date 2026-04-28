@@ -15,17 +15,17 @@ export default function Video() {
   // Update document title and meta tags for sharing
   useEffect(() => {
     if (!video) return;
-    const title = video.caption?.slice(0, 60) || 'Flytok video';
-    document.title = `${title} · Flytok`;
-    setMeta('description', video.caption ?? 'A travel video on Flytok.');
+    const title = video.caption?.slice(0, 60) || 'Roamrez video';
+    document.title = `${title} · Roamrez`;
+    setMeta('description', video.caption ?? 'A travel video on Roamrez.');
     setMeta('og:title', title, true);
-    setMeta('og:description', video.caption ?? 'A travel video on Flytok.', true);
+    setMeta('og:description', video.caption ?? 'A travel video on Roamrez.', true);
     setMeta('og:url', window.location.href, true);
     setMeta('og:type', 'video.other', true);
     if (video.downloadURL) setMeta('og:video', video.downloadURL, true);
     setMeta('twitter:card', 'player');
     return () => {
-      document.title = 'Flytok — Travel videos for the curious';
+      document.title = 'Roamrez — Travel videos for the curious';
     };
   }, [video]);
 
@@ -49,7 +49,7 @@ export default function Video() {
   async function share() {
     const url = window.location.href;
     try {
-      if (navigator.share) await navigator.share({ url, title: 'Flytok video' });
+      if (navigator.share) await navigator.share({ url, title: 'Roamrez video' });
       else {
         await navigator.clipboard.writeText(url);
         alert('Link copied');

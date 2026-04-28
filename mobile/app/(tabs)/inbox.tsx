@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
   ensureThread,
+  getUserLabel,
   threadsCol,
   usersCol,
   type ThreadDoc,
@@ -22,7 +23,7 @@ import {
 import { ensureNotificationPermission } from '@/lib/notifications';
 import { colors } from '@/lib/theme';
 
-type UserDoc = { uid: string; email: string | null };
+type UserDoc = { uid: string; email: string | null; displayName: string | null };
 
 export default function Inbox() {
   const me = auth().currentUser;
@@ -59,11 +60,34 @@ export default function Inbox() {
     return unsub;
   }, [me]);
 
-  function otherEmail(t: ThreadDoc) {
+  const [labels, setLabels] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!me) return;
+    const otherUids = Array.from(
+      new Set(
+        threads
+          .map((t) => t.participants.find((p) => p !== me.uid))
+          .filter((u): u is string => Boolean(u)),
+      ),
+    );
+    if (otherUids.length === 0) return;
+    Promise.all(
+      otherUids.map((uid) => getUserLabel(uid).then((label) => [uid, label] as const)),
+    ).then((entries) => {
+      setLabels((prev) => {
+        const next = { ...prev };
+        for (const [uid, label] of entries) next[uid] = label;
+        return next;
+      });
+    });
+  }, [threads, me]);
+
+  function otherLabel(t: ThreadDoc) {
     if (!me) return '';
     const otherUid = t.participants.find((p) => p !== me.uid);
     if (!otherUid) return '';
-    return t.participantEmails?.[otherUid] ?? otherUid.slice(0, 8);
+    return labels[otherUid] ?? `User ${otherUid.slice(0, 6)}`;
   }
 
   return (
@@ -93,7 +117,7 @@ export default function Inbox() {
                 <Ionicons name="person" size={20} color={colors.text} />
               </View>
               <View style={styles.rowText}>
-                <Text style={styles.name}>{otherEmail(item)}</Text>
+                <Text style={styles.name}>{otherLabel(item)}</Text>
                 {item.lastMessage ? (
                   <Text style={styles.preview} numberOfLines={1}>
                     {item.lastMessage}
@@ -130,7 +154,14 @@ function NewChatModal({ visible, onClose }: { visible: boolean; onClose: () => v
       .then((snap) => {
         setUsers(
           snap.docs
-            .map((d) => ({ uid: d.id, email: (d.data().email as string | null) ?? null }))
+            .map((d) => {
+              const data = d.data();
+              return {
+                uid: d.id,
+                email: (data.email as string | null) ?? null,
+                displayName: (data.displayName as string | null) ?? null,
+              };
+            })
             .filter((u) => u.uid !== me?.uid),
         );
       })
@@ -149,7 +180,9 @@ function NewChatModal({ visible, onClose }: { visible: boolean; onClose: () => v
   }
 
   const filtered = filter
-    ? users.filter((u) => (u.email ?? '').toLowerCase().includes(filter.toLowerCase()))
+    ? users.filter((u) =>
+        (u.displayName ?? '').toLowerCase().includes(filter.toLowerCase()),
+      )
     : users;
 
   return (
@@ -166,7 +199,7 @@ function NewChatModal({ visible, onClose }: { visible: boolean; onClose: () => v
         <TextInput
           value={filter}
           onChangeText={setFilter}
-          placeholder="Search by email…"
+          placeholder="Search by name…"
           placeholderTextColor={colors.textFaint}
           autoCapitalize="none"
           style={styles.search}
@@ -184,7 +217,9 @@ function NewChatModal({ visible, onClose }: { visible: boolean; onClose: () => v
                 <Ionicons name="person" size={20} color={colors.text} />
               </View>
               <View style={styles.rowText}>
-                <Text style={styles.name}>{item.email ?? item.uid.slice(0, 8)}</Text>
+                <Text style={styles.name}>
+                  {item.displayName ?? `User ${item.uid.slice(0, 6)}`}
+                </Text>
               </View>
               {busy === item.uid && <ActivityIndicator color={colors.accent} />}
             </Pressable>

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -12,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import {
   CameraView,
   useCameraPermissions,
@@ -20,7 +21,8 @@ import {
 } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { uploadVideo } from '@/lib/firestore';
+import { extractHashtags, extractMentions, uploadVideo, type VideoLocation } from '@/lib/firestore';
+import { geocodeAddress, getCountryLocation, getCurrentLocationLabeled, type GeoResult } from '@/lib/geocode';
 import { colors } from '@/lib/theme';
 
 type Mode = 'camera' | 'review';
@@ -34,16 +36,9 @@ export default function CameraScreen() {
   const [recording, setRecording] = useState(false);
   const [uri, setUri] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
+  const [location, setLocation] = useState<VideoLocation | null>(null);
   const [mode, setMode] = useState<Mode>('camera');
   const [posting, setPosting] = useState(false);
-  const [active, setActive] = useState(false);
-
-  useFocusEffect(
-    useCallback(() => {
-      setActive(true);
-      return () => setActive(false);
-    }, []),
-  );
 
   useEffect(() => {
     if (camPerm && !camPerm.granted && camPerm.canAskAgain) requestCamPerm();
@@ -53,14 +48,36 @@ export default function CameraScreen() {
   }, [micPerm, requestMicPerm]);
 
   async function pickFromLibrary() {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      videoMaxDuration: 60,
-      quality: 1,
-    });
-    if (!res.canceled && res.assets[0]) {
-      setUri(res.assets[0].uri);
-      setMode('review');
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          'Photos access needed',
+          'Enable Photos access for Roamrez in Settings to pick a video from your library.',
+        );
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        videoMaxDuration: 60,
+        quality: 1,
+        // Force the asset to be exported as a local file so iCloud-only
+        // videos get downloaded before we hand back a URI.
+        videoExportPreset: ImagePicker.VideoExportPreset.Passthrough,
+      });
+      if (!res.canceled && res.assets[0]) {
+        setUri(res.assets[0].uri);
+        setMode('review');
+      }
+    } catch (err: any) {
+      const msg = err?.message ?? '';
+      const isCloud = /3164|iCloud|could not be completed/i.test(msg);
+      Alert.alert(
+        'Could not load that video',
+        isCloud
+          ? "iOS couldn't load this clip — it's likely in iCloud and not yet downloaded to your phone. Open it in Photos first to download it, then try again."
+          : msg || 'Try a different video.',
+      );
     }
   }
 
@@ -88,9 +105,21 @@ export default function CameraScreen() {
     if (!uri) return;
     setPosting(true);
     try {
-      await uploadVideo({ uri, caption });
+      // If the user didn't pick a place, fall back to a country-level pin so
+      // the upload still appears on the Map.
+      let finalLocation = location;
+      if (!finalLocation) {
+        finalLocation = await getCountryLocation();
+      }
+      await uploadVideo({
+        uri,
+        caption,
+        location: finalLocation,
+        hashtags: extractHashtags(caption),
+        mentions: extractMentions(caption),
+      });
       reset();
-      router.replace('/');
+      router.back();
     } catch (err: any) {
       Alert.alert('Upload failed', err?.message ?? 'Try again.');
     } finally {
@@ -101,6 +130,7 @@ export default function CameraScreen() {
   function reset() {
     setUri(null);
     setCaption('');
+    setLocation(null);
     setMode('camera');
   }
 
@@ -115,7 +145,7 @@ export default function CameraScreen() {
   if (!camPerm.granted) {
     return (
       <SafeAreaView style={styles.permSafe}>
-        <Stack.Screen options={{ headerShown: false, presentation: 'modal' }} />
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.permissionBox}>
           <Pressable onPress={() => router.back()} style={styles.permClose} hitSlop={12}>
             <Ionicons name="close" size={26} color={colors.text} />
@@ -123,7 +153,7 @@ export default function CameraScreen() {
           <Ionicons name="videocam-outline" size={32} color={colors.textMuted} />
           <Text style={styles.permTitle}>Camera access needed</Text>
           <Text style={styles.permBody}>
-            Flytok needs the camera to record travel videos.
+            Roamrez needs the camera to record travel videos.
           </Text>
           <Pressable onPress={requestCamPerm} style={styles.permButton}>
             <Text style={styles.permButtonText}>Grant access</Text>
@@ -142,6 +172,8 @@ export default function CameraScreen() {
         uri={uri}
         caption={caption}
         onCaptionChange={setCaption}
+        location={location}
+        onLocationChange={setLocation}
         posting={posting}
         onPost={post}
         onRetake={reset}
@@ -151,15 +183,15 @@ export default function CameraScreen() {
 
   return (
     <View style={styles.cameraScreen}>
-      <Stack.Screen options={{ headerShown: false, presentation: 'modal' }} />
-      {active && (
-        <CameraView
-          ref={cameraRef}
-          style={StyleSheet.absoluteFill}
-          facing={facing}
-          mode="video"
-        />
-      )}
+      <Stack.Screen options={{ headerShown: false }} />
+      <CameraView
+        ref={cameraRef}
+        style={StyleSheet.absoluteFill}
+        facing={facing}
+        mode="video"
+        videoQuality="1080p"
+      />
+
 
       <SafeAreaView style={styles.cameraOverlay} edges={['top', 'bottom']} pointerEvents="box-none">
         <View style={styles.topBar}>
@@ -200,6 +232,8 @@ function ReviewScreen({
   uri,
   caption,
   onCaptionChange,
+  location,
+  onLocationChange,
   posting,
   onPost,
   onRetake,
@@ -207,10 +241,15 @@ function ReviewScreen({
   uri: string;
   caption: string;
   onCaptionChange: (v: string) => void;
+  location: VideoLocation | null;
+  onLocationChange: (loc: VideoLocation | null) => void;
   posting: boolean;
   onPost: () => void;
   onRetake: () => void;
 }) {
+  const [showLocation, setShowLocation] = useState(false);
+  const hashtags = extractHashtags(caption);
+  const mentions = extractMentions(caption);
   const player = useVideoPlayer(uri, (p) => {
     p.loop = true;
     p.muted = false;
@@ -219,7 +258,7 @@ function ReviewScreen({
 
   return (
     <View style={styles.reviewScreen}>
-      <Stack.Screen options={{ headerShown: false, presentation: 'modal' }} />
+      <Stack.Screen options={{ headerShown: false }} />
       <VideoView
         player={player}
         style={StyleSheet.absoluteFill}
@@ -245,12 +284,48 @@ function ReviewScreen({
             <TextInput
               value={caption}
               onChangeText={onCaptionChange}
-              placeholder="Add a caption…"
+              placeholder="Caption — use #tags and @mentions"
               placeholderTextColor="rgba(255,255,255,0.6)"
               multiline
               style={styles.captionInput}
               editable={!posting}
             />
+
+            {(hashtags.length > 0 || mentions.length > 0) && (
+              <View style={styles.chipRow}>
+                {hashtags.map((t) => (
+                  <View key={`h-${t}`} style={styles.chipTag}>
+                    <Text style={styles.chipText}>#{t}</Text>
+                  </View>
+                ))}
+                {mentions.map((m) => (
+                  <View key={`m-${m}`} style={styles.chipMention}>
+                    <Text style={styles.chipText}>@{m}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <Pressable
+              onPress={() => setShowLocation(true)}
+              disabled={posting}
+              style={styles.locationButton}
+            >
+              <Ionicons
+                name={location ? 'location' : 'location-outline'}
+                size={18}
+                color={location ? colors.accent : '#fff'}
+              />
+              <Text style={styles.locationText} numberOfLines={1}>
+                {location?.label ?? 'Add location'}
+              </Text>
+              {location && (
+                <Pressable onPress={() => onLocationChange(null)} hitSlop={8}>
+                  <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.6)" />
+                </Pressable>
+              )}
+            </Pressable>
+
             <Pressable
               onPress={onPost}
               disabled={posting}
@@ -270,6 +345,117 @@ function ReviewScreen({
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
+  );
+}
+
+function LocationPickerModal({
+  visible,
+  onClose,
+  onPick,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onPick: (loc: VideoLocation) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<GeoResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [usingCurrent, setUsingCurrent] = useState(false);
+
+  async function search() {
+    const q = query.trim();
+    if (!q) return;
+    setSearching(true);
+    try {
+      const res = await geocodeAddress(q);
+      setResults(res);
+    } catch {
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function useCurrent() {
+    setUsingCurrent(true);
+    try {
+      const here = await getCurrentLocationLabeled();
+      onPick({ latitude: here.latitude, longitude: here.longitude, label: here.label });
+    } catch (err: any) {
+      Alert.alert('Location unavailable', err?.message ?? 'Try searching instead.');
+    } finally {
+      setUsingCurrent(false);
+    }
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <View style={styles.locModalScreen}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.flex}
+        >
+          <View style={styles.locModalHeader}>
+            <Pressable onPress={onClose} hitSlop={12}>
+              <Text style={styles.locModalCancel}>Cancel</Text>
+            </Pressable>
+            <Text style={styles.locModalTitle}>Add location</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          <View style={styles.locModalBody}>
+            <View style={styles.locSearchRow}>
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                onSubmitEditing={search}
+                placeholder="Search a place…"
+                placeholderTextColor={colors.textFaint}
+                autoCapitalize="none"
+                returnKeyType="search"
+                style={styles.locInput}
+              />
+              <Pressable
+                onPress={search}
+                disabled={!query.trim() || searching}
+                style={[styles.locSearchBtn, (!query.trim() || searching) && styles.postDisabled]}
+              >
+                {searching ? (
+                  <ActivityIndicator color={colors.bg} />
+                ) : (
+                  <Ionicons name="search" size={18} color={colors.bg} />
+                )}
+              </Pressable>
+            </View>
+
+            <Pressable onPress={useCurrent} disabled={usingCurrent} style={styles.locCurrentBtn}>
+              <Ionicons name="locate" size={18} color={colors.accent} />
+              <Text style={styles.locCurrentText}>
+                {usingCurrent ? 'Locating…' : 'Use my current location'}
+              </Text>
+            </Pressable>
+
+            {results.map((r, i) => (
+              <Pressable
+                key={`${r.latitude}-${r.longitude}-${i}`}
+                onPress={() => onPick(r)}
+                style={styles.locResult}
+              >
+                <Ionicons name="location-outline" size={18} color={colors.textMuted} />
+                <Text style={styles.locResultText} numberOfLines={2}>
+                  {r.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
   );
 }
 
@@ -364,4 +550,78 @@ const styles = StyleSheet.create({
   postPressed: { backgroundColor: colors.accentDim },
   postDisabled: { opacity: 0.5 },
   postText: { color: colors.bg, fontWeight: '600' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chipTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(56, 189, 248, 0.18)',
+  },
+  chipMention: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+  },
+  chipText: { color: '#fff', fontSize: 12, fontWeight: '500' },
+  locationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  locationText: { color: '#fff', fontSize: 14, flex: 1 },
+  locModalScreen: { flex: 1, backgroundColor: colors.bg },
+  locModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  locModalCancel: { color: colors.textMuted, fontSize: 14, width: 60 },
+  locModalTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  locModalBody: { padding: 16, gap: 12 },
+  locSearchRow: { flexDirection: 'row', gap: 8 },
+  locInput: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: colors.text,
+    fontSize: 14,
+  },
+  locSearchBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locCurrentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  locCurrentText: { color: colors.accent, fontSize: 14, fontWeight: '500' },
+  locResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  locResultText: { color: colors.text, fontSize: 14, flex: 1 },
 });

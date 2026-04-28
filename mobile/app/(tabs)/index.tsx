@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { getBlockedIds, videosCol, type VideoDoc } from '@/lib/firestore';
 import { FeedItem } from '@/components/FeedItem';
+import { prefetchVideos } from '@/lib/videoCache';
 import { colors } from '@/lib/theme';
 
 const { height } = Dimensions.get('window');
@@ -26,11 +27,13 @@ export default function Feed() {
       videosCol().orderBy('createdAt', 'desc').limit(50).get(),
       getBlockedIds(),
     ]);
-    setVideos(
-      snap.docs
-        .map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }))
-        .filter((v) => !blockedIds.has(v.ownerId)),
-    );
+    const list = snap.docs
+      .map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }))
+      .filter((v) => !blockedIds.has(v.ownerId));
+    setVideos(list);
+    // Pre-warm the cache for the first handful of videos so scrolling forward
+    // is snappy. Fire-and-forget; failures are silently ignored.
+    prefetchVideos(list.slice(0, 5).map((v) => v.downloadURL).filter(Boolean));
   }, []);
 
   const handleBlocked = useCallback((uid: string) => {

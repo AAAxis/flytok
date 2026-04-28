@@ -28,13 +28,13 @@ export default function Privacy() {
 
           <Text style={styles.h2}>How we use it</Text>
           <Text style={styles.p}>
-            We use this data to operate Flytok — to show you a feed, deliver chats, fix bugs, and
+            We use this data to operate Roamrez — to show you a feed, deliver chats, fix bugs, and
             keep the service safe. We do not sell your personal data.
           </Text>
 
           <Text style={styles.h2}>Sharing</Text>
           <Text style={styles.p}>
-            Content you post is visible to other Flytok users. We use Firebase (Google Cloud) for
+            Content you post is visible to other Roamrez users. We use Firebase (Google Cloud) for
             authentication, storage, database, and crash reporting; data is processed under
             Google's terms.
           </Text>
@@ -48,7 +48,7 @@ export default function Privacy() {
 
           <Text style={styles.h2}>Children</Text>
           <Text style={styles.p}>
-            Flytok is not directed to children under 13. We do not knowingly collect data from
+            Roamrez is not directed to children under 13. We do not knowingly collect data from
             children under 13.
           </Text>
 

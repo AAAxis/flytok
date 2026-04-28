@@ -43,7 +43,7 @@ export default function Landing() {
             Travel videos for the curious.
           </h1>
           <p className="mt-6 text-lg text-zinc-400 max-w-2xl">
-            Flytok is a vertical video app for travelers. Discover places, share your trips,
+            Roamrez is a vertical video app for travelers. Discover places, share your trips,
             chat with friends, and find what's worth flying for.
           </p>
           <div className="mt-10 flex gap-3">
@@ -82,7 +82,7 @@ export default function Landing() {
       </section>
 
       <footer className="border-t border-zinc-900 px-6 py-8 max-w-6xl mx-auto flex flex-col sm:flex-row justify-between gap-4 text-sm text-zinc-500">
-        <div>© {new Date().getFullYear()} Flytok</div>
+        <div>© {new Date().getFullYear()} Roamrez</div>
         <div className="flex gap-5">
           <a href="https://flytok.vercel.app/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-300">Privacy</a>
           <a href="https://flytok.vercel.app/terms" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-300">Terms</a>

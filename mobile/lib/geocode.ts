@@ -80,3 +80,35 @@ export async function getCurrentLocationLabeled(): Promise<GeoResult> {
     longitude: pos.coords.longitude,
   };
 }
+
+/**
+ * Best-effort country-level location used as a fallback when the user didn't
+ * pick a specific place but we still want a pin on the map. Returns null if
+ * GPS permission is denied.
+ */
+export async function getCountryLocation(): Promise<GeoResult | null> {
+  try {
+    const perm = await Location.getForegroundPermissionsAsync();
+    let granted = perm.granted;
+    if (!granted && perm.canAskAgain) {
+      const ask = await Location.requestForegroundPermissionsAsync();
+      granted = ask.granted;
+    }
+    if (!granted) return null;
+    const pos = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Lowest,
+    });
+    const places = await Location.reverseGeocodeAsync({
+      latitude: pos.coords.latitude,
+      longitude: pos.coords.longitude,
+    });
+    const country = places[0]?.country ?? 'Unknown';
+    return {
+      latitude: pos.coords.latitude,
+      longitude: pos.coords.longitude,
+      label: country,
+    };
+  } catch {
+    return null;
+  }
+}

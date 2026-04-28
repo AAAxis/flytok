@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
   ensureThread,
+  getUserLabel,
   sendVideoCard,
   threadsCol,
   type ThreadDoc,
@@ -74,11 +75,32 @@ export function ShareToChatSheet({
     }
   }
 
-  function otherEmail(t: ThreadDoc) {
+  const [labels, setLabels] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!me) return;
+    const otherUids = Array.from(
+      new Set(
+        threads
+          .map((t) => t.participants.find((p) => p !== me.uid))
+          .filter((u): u is string => Boolean(u)),
+      ),
+    );
+    Promise.all(otherUids.map((uid) => getUserLabel(uid).then((l) => [uid, l] as const))).then(
+      (entries) => {
+        setLabels((prev) => {
+          const next = { ...prev };
+          for (const [uid, label] of entries) next[uid] = label;
+          return next;
+        });
+      },
+    );
+  }, [threads, me]);
+
+  function otherLabel(t: ThreadDoc) {
     if (!me) return '';
     const otherUid = t.participants.find((p) => p !== me.uid);
     if (!otherUid) return '';
-    return t.participantEmails?.[otherUid] ?? otherUid.slice(0, 8);
+    return labels[otherUid] ?? `User ${otherUid.slice(0, 6)}`;
   }
 
   return (
@@ -107,7 +129,7 @@ export function ShareToChatSheet({
                   <Ionicons name="paper-plane" size={18} color={colors.text} />
                 </View>
                 <View style={styles.rowText}>
-                  <Text style={styles.name}>Send to {video.ownerEmail ?? 'creator'}</Text>
+                  <Text style={styles.name}>Send to creator</Text>
                   <Text style={styles.sub}>Start a new chat</Text>
                 </View>
                 {busy === video.ownerId && <ActivityIndicator color={colors.accent} />}
@@ -123,7 +145,7 @@ export function ShareToChatSheet({
                 <Ionicons name="person" size={18} color={colors.text} />
               </View>
               <View style={styles.rowText}>
-                <Text style={styles.name}>{otherEmail(item)}</Text>
+                <Text style={styles.name}>{otherLabel(item)}</Text>
                 {item.lastMessage ? (
                   <Text style={styles.sub} numberOfLines={1}>{item.lastMessage}</Text>
                 ) : null}

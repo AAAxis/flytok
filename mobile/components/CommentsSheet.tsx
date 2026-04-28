@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { commentsCol, postComment, type CommentDoc } from '@/lib/firestore';
+import { commentsCol, getCachedUserLabel, getUserLabel, postComment, type CommentDoc } from '@/lib/firestore';
 import { colors } from '@/lib/theme';
 
 export function CommentsSheet({
@@ -58,12 +58,12 @@ export function CommentsSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <SafeAreaView style={styles.sheet} edges={['bottom']}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
-        >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.kav}
+      >
+        <Pressable style={styles.backdrop} onPress={onClose} />
+        <SafeAreaView style={styles.sheet} edges={['bottom']}>
           <View style={styles.handle} />
           <View style={styles.header}>
             <Text style={styles.title}>Comments</Text>
@@ -77,13 +77,9 @@ export function CommentsSheet({
             keyExtractor={(c) => c.id}
             style={styles.list}
             contentContainerStyle={styles.listContent}
+            keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => (
-              <View style={styles.commentRow}>
-                <Text style={styles.author}>
-                  {item.authorEmail ?? item.authorId.slice(0, 8)}
-                </Text>
-                <Text style={styles.text}>{item.text}</Text>
-              </View>
+              <CommentRow comment={item} />
             )}
             ListEmptyComponent={
               <Text style={styles.empty}>Be the first to comment</Text>
@@ -117,13 +113,34 @@ export function CommentsSheet({
               )}
             </Pressable>
           </View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
+function CommentRow({ comment }: { comment: CommentDoc }) {
+  const initial = getCachedUserLabel(comment.authorId) ?? `User ${comment.authorId.slice(0, 6)}`;
+  const [label, setLabel] = useState(initial);
+  useEffect(() => {
+    let cancelled = false;
+    getUserLabel(comment.authorId).then((l) => {
+      if (!cancelled) setLabel(l);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [comment.authorId]);
+  return (
+    <View style={styles.commentRow}>
+      <Text style={styles.author}>{label}</Text>
+      <Text style={styles.text}>{comment.text}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  kav: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: {
     backgroundColor: colors.surface,

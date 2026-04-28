@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useHeaderHeight } from '@react-navigation/elements';
 import {
+  getUserLabel,
   messagesCol,
   sendTextMessage,
   threadsCol,
@@ -80,19 +81,21 @@ export default function ChatThread() {
     }
   }
 
-  const otherEmail = (() => {
-    if (!thread || !me) return '';
+  const [otherLabel, setOtherLabel] = useState('Chat');
+  useEffect(() => {
+    if (!thread || !me) return;
     const otherUid = thread.participants.find((p) => p !== me.uid);
-    if (!otherUid) return '';
-    return thread.participantEmails?.[otherUid] ?? otherUid.slice(0, 8);
-  })();
+    if (!otherUid) return;
+    setOtherLabel(`User ${otherUid.slice(0, 6)}`);
+    getUserLabel(otherUid).then((label) => setOtherLabel(label));
+  }, [thread, me]);
 
   return (
     <>
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: otherEmail || 'Chat',
+          headerTitle: otherLabel,
           headerStyle: { backgroundColor: colors.bg },
           headerTitleStyle: { color: colors.text },
           headerTintColor: colors.text,
@@ -186,7 +189,7 @@ function MessageBubble({
           <View style={styles.videoCardMeta}>
             <Text style={styles.videoCardLabel}>Shared a video</Text>
             {message.videoOwnerEmail ? (
-              <Text style={styles.videoCardOwner}>{message.videoOwnerEmail}</Text>
+              <Text style={styles.videoCardOwner}>Shared video</Text>
             ) : null}
             {message.videoCaption ? (
               <Text style={styles.videoCardCaption} numberOfLines={2}>
