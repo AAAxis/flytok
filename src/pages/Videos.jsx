@@ -63,7 +63,6 @@ export default function Videos() {
                 <TableHead className="text-zinc-400">Video</TableHead>
                 <TableHead className="text-zinc-400">Author</TableHead>
                 <TableHead className="text-zinc-400">Uploaded</TableHead>
-                <TableHead className="text-zinc-400 text-right">Views</TableHead>
                 <TableHead className="text-zinc-400 text-right">Likes</TableHead>
                 <TableHead className="text-zinc-400 text-right">Comments</TableHead>
                 <TableHead className="text-zinc-400">Status</TableHead>
@@ -75,8 +74,13 @@ export default function Videos() {
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-14 rounded bg-zinc-800 overflow-hidden flex items-center justify-center flex-shrink-0">
-                        {v.thumbnailUrl ? (
-                          <img src={v.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+                        {v.thumbnailUrl && /\.(jpe?g|png|webp|gif|avif)$/i.test(v.thumbnailUrl) ? (
+                          <img
+                            src={v.thumbnailUrl}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          />
                         ) : v.downloadURL ? (
                           <video
                             src={v.downloadURL}
@@ -101,7 +105,6 @@ export default function Videos() {
                     {v.ownerEmail ?? v.authorUsername ?? v.ownerId ?? v.authorId ?? '—'}
                   </TableCell>
                   <TableCell className="text-zinc-400">{fmtDate(v.createdAt)}</TableCell>
-                  <TableCell className="text-zinc-400 text-right">{fmtNum(v.viewCount)}</TableCell>
                   <TableCell className="text-zinc-400 text-right">{fmtNum(Math.max(0, v.likeCount ?? 0))}</TableCell>
                   <TableCell className="text-zinc-400 text-right">{fmtNum(v.commentCount)}</TableCell>
                   <TableCell>

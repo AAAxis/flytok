@@ -463,6 +463,12 @@ export async function postComment(videoId: string, text: string) {
     text: text.trim(),
     createdAt: firestore.FieldValue.serverTimestamp(),
   });
+  // Maintain a denormalised count so admin dashboards / sort queries don't
+  // need to count the subcollection.
+  await videosCol().doc(videoId).set(
+    { commentCount: firestore.FieldValue.increment(1) },
+    { merge: true },
+  );
   track.commentPosted(videoId);
 }
 

@@ -77,8 +77,18 @@ export const moderationRepo = {
     await deleteDoc(videoRef);
   },
 
-  deleteComment: (videoId, commentId) =>
-    deleteDoc(doc(firestore, 'videos', videoId, 'comments', commentId)),
+  deleteComment: async (videoId, commentId) => {
+    await deleteDoc(doc(firestore, 'videos', videoId, 'comments', commentId));
+    // Keep the denormalised count honest — clamp at 0.
+    try {
+      const videoRef = doc(firestore, 'videos', videoId);
+      const snap = await getDoc(videoRef);
+      const current = (snap.data()?.commentCount ?? 0) | 0;
+      await updateDoc(videoRef, { commentCount: Math.max(0, current - 1) });
+    } catch {
+      // best-effort
+    }
+  },
 
   blockUser: (uid) =>
     updateDoc(doc(firestore, 'users', uid), {

@@ -45,27 +45,40 @@ initializeApp({ credential: cert(JSON.parse(readFileSync(keyPath, 'utf8'))) });
 const db = getFirestore();
 
 const videos = await db.collection('videos').get();
-let touched = 0;
-let fixed = 0;
-let recomputed = 0;
+let touchedLikes = 0;
+let touchedComments = 0;
 
 for (const doc of videos.docs) {
   const data = doc.data();
-  const stored = (data.likeCount ?? 0) | 0;
-  // Re-count from the likes subcollection for accuracy.
-  const likes = await db.collection('videos').doc(doc.id).collection('likes').count().get();
-  const actual = likes.data().count;
+  const updates = {};
 
-  const next = Math.max(0, actual);
-  if (stored !== next) {
-    await doc.ref.set({ likeCount: next }, { merge: true });
-    if (stored < 0) fixed++;
-    if (stored !== actual) recomputed++;
-    touched++;
-    console.log(`${doc.id}: ${stored} → ${next}`);
+  // likeCount — recount from the likes subcollection.
+  const likes = await db.collection('videos').doc(doc.id).collection('likes').count().get();
+  const likeActual = Math.max(0, likes.data().count);
+  if ((data.likeCount ?? 0) !== likeActual) {
+    updates.likeCount = likeActual;
+    touchedLikes++;
+  }
+
+  // commentCount — recount from the comments subcollection.
+  const comments = await db
+    .collection('videos')
+    .doc(doc.id)
+    .collection('comments')
+    .count()
+    .get();
+  const commentActual = Math.max(0, comments.data().count);
+  if ((data.commentCount ?? 0) !== commentActual) {
+    updates.commentCount = commentActual;
+    touchedComments++;
+  }
+
+  if (Object.keys(updates).length) {
+    await doc.ref.set(updates, { merge: true });
+    console.log(`${doc.id}: ${JSON.stringify(updates)}`);
   }
 }
 
 console.log('');
-console.log(`Done — scanned ${videos.size}, touched ${touched}, fixed ${fixed} negatives, recomputed ${recomputed}.`);
+console.log(`Done — scanned ${videos.size}, fixed ${touchedLikes} likeCount and ${touchedComments} commentCount.`);
 process.exit(0);

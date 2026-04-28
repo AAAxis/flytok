@@ -156,13 +156,23 @@ async function findPortraitVideo(query) {
 
   // Pixabay returns multiple sizes per video. We want a portrait clip.
   // Prefer the "large" size and check its dimensions.
+  function thumbFor(hit) {
+    // Pixabay's `videos.tiny.url` is a tiny *.mp4*, not an image — using it as
+    // an <img> source fails. Pixabay also exposes a JPEG poster frame at
+    //   https://i.vimeocdn.com/video/<picture_id>_640x360.jpg
+    // The picture_id is on the hit itself.
+    const id = hit.picture_id;
+    if (id) return `https://i.vimeocdn.com/video/${id}_640x360.jpg`;
+    return null;
+  }
+
   for (const hit of data.hits) {
     const v = hit.videos?.large ?? hit.videos?.medium ?? hit.videos?.small;
     if (!v?.url) continue;
     if ((v.height ?? 0) > (v.width ?? 0)) {
       return {
         url: v.url,
-        thumbnail: hit.videos?.tiny?.url ?? null,
+        thumbnail: thumbFor(hit),
         width: v.width,
         height: v.height,
         pixabayId: hit.id,
@@ -177,7 +187,7 @@ async function findPortraitVideo(query) {
   return v?.url
     ? {
         url: v.url,
-        thumbnail: fallback.videos?.tiny?.url ?? null,
+        thumbnail: thumbFor(fallback),
         width: v.width,
         height: v.height,
         pixabayId: fallback.id,
