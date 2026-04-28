@@ -9,6 +9,7 @@ export default function Terms() {
         <nav className="flex gap-6 text-sm text-zinc-400">
           <Link to="/" className="hover:text-zinc-100">Home</Link>
           <Link to="/privacy" className="hover:text-zinc-100">Privacy</Link>
+          <Link to="/support" className="hover:text-zinc-100">Support</Link>
         </nav>
       </header>
 

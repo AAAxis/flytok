@@ -16,13 +16,13 @@ import {
 import { ref as storageRef, deleteObject } from 'firebase/storage';
 import { firestore, firebaseStorage } from '@/lib/firebase';
 
-const reportsCol = collection(firestore, 'reports');
+const reportsCol = () => collection(firestore, 'reports');
 
 export const reportsRepo = {
   list: async ({ status = 'open', pageSize = 100 } = {}) => {
     try {
       const q = query(
-        reportsCol,
+        reportsCol(),
         where('status', '==', status),
         orderBy('createdAt', 'desc'),
         limit(pageSize),
@@ -30,7 +30,7 @@ export const reportsRepo = {
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     } catch {
-      const snap = await getDocs(query(reportsCol, where('status', '==', status), limit(pageSize)));
+      const snap = await getDocs(query(reportsCol(), where('status', '==', status), limit(pageSize)));
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
   },
@@ -95,7 +95,7 @@ export const moderationRepo = {
   reportedVideoIds: async () => {
     try {
       const q = query(
-        reportsCol,
+        reportsCol(),
         where('status', '==', 'open'),
         where('target.kind', '==', 'video'),
         limit(500),
@@ -117,7 +117,7 @@ export const commentsRepo = {
   recentReported: async ({ pageSize = 100 } = {}) => {
     try {
       const q = query(
-        reportsCol,
+        reportsCol(),
         where('status', '==', 'open'),
         where('target.kind', '==', 'comment'),
         orderBy('createdAt', 'desc'),

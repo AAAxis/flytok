@@ -9,6 +9,7 @@ export default function Privacy() {
         <nav className="flex gap-6 text-sm text-zinc-400">
           <Link to="/" className="hover:text-zinc-100">Home</Link>
           <Link to="/terms" className="hover:text-zinc-100">Terms</Link>
+          <Link to="/support" className="hover:text-zinc-100">Support</Link>
         </nav>
       </header>
 

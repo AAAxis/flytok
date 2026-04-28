@@ -13,6 +13,7 @@ import Layout from '@/Layout';
 import Landing from '@/pages/marketing/Landing';
 import Privacy from '@/pages/marketing/Privacy';
 import Terms from '@/pages/marketing/Terms';
+import Support from '@/pages/marketing/Support';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Users from '@/pages/Users';
@@ -66,6 +67,7 @@ function AppRoutes() {
       <Route path="/" element={<Landing />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
+      <Route path="/support" element={<Support />} />
 
       {/* Admin login */}
       <Route

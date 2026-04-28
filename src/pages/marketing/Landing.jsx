@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import Logo from '@/components/common/Logo';
 import { Smartphone, Map, MessageCircle, Shield } from 'lucide-react';
 
@@ -32,8 +31,9 @@ export default function Landing() {
         <Logo size="md" />
         <nav className="flex gap-6 text-sm text-zinc-400">
           <a href="#features" className="hover:text-zinc-100">Features</a>
-          <Link to="/privacy" className="hover:text-zinc-100">Privacy</Link>
-          <Link to="/terms" className="hover:text-zinc-100">Terms</Link>
+          <a href="https://flytok.vercel.app/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-100">Privacy</a>
+          <a href="https://flytok.vercel.app/terms" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-100">Terms</a>
+          <a href="https://flytok.vercel.app/support" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-100">Support</a>
         </nav>
       </header>
 
@@ -84,9 +84,9 @@ export default function Landing() {
       <footer className="border-t border-zinc-900 px-6 py-8 max-w-6xl mx-auto flex flex-col sm:flex-row justify-between gap-4 text-sm text-zinc-500">
         <div>© {new Date().getFullYear()} Flytok</div>
         <div className="flex gap-5">
-          <Link to="/privacy" className="hover:text-zinc-300">Privacy</Link>
-          <Link to="/terms" className="hover:text-zinc-300">Terms</Link>
-          <a href="mailto:support@flytok.app" className="hover:text-zinc-300">Contact</a>
+          <a href="https://flytok.vercel.app/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-300">Privacy</a>
+          <a href="https://flytok.vercel.app/terms" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-300">Terms</a>
+          <a href="https://flytok.vercel.app/support" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-300">Support</a>
         </div>
       </footer>
     </div>
