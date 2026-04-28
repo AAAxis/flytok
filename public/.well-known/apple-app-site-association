@@ -1,0 +1,19 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.roamrez.flytok"],
+        "components": [
+          {
+            "/": "/v/*",
+            "comment": "Open per-video URLs in the Flytok app"
+          },
+          {
+            "/": "/feed",
+            "comment": "Open the feed in the app"
+          }
+        ]
+      }
+    ]
+  }
+}

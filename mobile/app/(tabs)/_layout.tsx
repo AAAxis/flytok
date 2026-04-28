@@ -1,9 +1,10 @@
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { View, StyleSheet } from 'react-native';
+import { Pressable, View, StyleSheet } from 'react-native';
 import { colors } from '@/lib/theme';
 
 export default function TabsLayout() {
+  const router = useRouter();
   return (
     <Tabs
       screenOptions={{
@@ -39,6 +40,15 @@ export default function TabsLayout() {
             <View style={styles.uploadButton}>
               <Ionicons name="add" size={26} color={colors.bg} />
             </View>
+          ),
+          tabBarButton: (props) => (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/camera' as never)}
+              style={props.style}
+            >
+              {props.children}
+            </Pressable>
           ),
         }}
       />

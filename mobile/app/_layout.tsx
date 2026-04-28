@@ -75,6 +75,7 @@ function Gate() {
 }
 
 export default function RootLayout() {
+  useTrackingPrompt();
   return (
     <AuthProvider>
       <Gate />

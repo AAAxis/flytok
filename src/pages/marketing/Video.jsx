@@ -64,13 +64,21 @@ export default function Video() {
           <ArrowLeft className="w-4 h-4" /> Feed
         </Link>
         <Link to="/"><Logo size="sm" /></Link>
-        <button
-          type="button"
-          onClick={share}
-          className="text-zinc-400 hover:text-zinc-100 inline-flex items-center gap-1 text-sm"
-        >
-          <Share2 className="w-4 h-4" /> Share
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href={`flytok://v/${id}`}
+            className="text-sky-400 hover:text-sky-300 text-sm"
+          >
+            Open in app
+          </a>
+          <button
+            type="button"
+            onClick={share}
+            className="text-zinc-400 hover:text-zinc-100 inline-flex items-center gap-1 text-sm"
+          >
+            <Share2 className="w-4 h-4" /> Share
+          </button>
+        </div>
       </header>
 
       <div className="max-w-md mx-auto p-4">

@@ -19,6 +19,7 @@ import {
   usersCol,
   type ThreadDoc,
 } from '@/lib/firestore';
+import { ensureNotificationPermission } from '@/lib/notifications';
 import { colors } from '@/lib/theme';
 
 type UserDoc = { uid: string; email: string | null };
@@ -29,6 +30,10 @@ export default function Inbox() {
   const [threads, setThreads] = useState<ThreadDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
+
+  useEffect(() => {
+    ensureNotificationPermission();
+  }, []);
 
   useEffect(() => {
     if (!me) return;
