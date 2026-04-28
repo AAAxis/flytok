@@ -151,7 +151,7 @@ export default function UserDetail() {
             variant="outline"
             onClick={sendReset}
             disabled={!user.email || resetState.status === 'sending'}
-            className="gap-1"
+            className="gap-1 bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700 hover:text-zinc-100"
           >
             <KeyRound className="w-4 h-4" />
             {resetState.status === 'sending' ? 'Sending…' : 'Send password reset email'}
@@ -176,7 +176,7 @@ export default function UserDetail() {
               variant="outline"
               onClick={() => unblock.mutate()}
               disabled={unblock.isPending}
-              className="gap-1"
+              className="gap-1 bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700 hover:text-zinc-100"
             >
               <ShieldCheck className="w-4 h-4" /> Unblock
             </Button>
@@ -185,7 +185,7 @@ export default function UserDetail() {
               variant="outline"
               onClick={() => block.mutate()}
               disabled={block.isPending}
-              className="gap-1"
+              className="gap-1 bg-zinc-800 text-zinc-100 border-zinc-700 hover:bg-zinc-700 hover:text-zinc-100"
             >
               <ShieldOff className="w-4 h-4" /> Block
             </Button>
