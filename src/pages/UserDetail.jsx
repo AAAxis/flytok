@@ -93,7 +93,6 @@ export default function UserDetail() {
           <h1 className="text-2xl font-semibold text-zinc-100">
             {user.displayName ?? user.email ?? user.id}
           </h1>
-          <div className="text-zinc-100 text-sm break-all font-medium">{user.email ?? '—'}</div>
           <div className="text-xs text-zinc-500 font-mono break-all mt-1">{user.id}</div>
           <div className="flex gap-2 mt-3">
             <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>

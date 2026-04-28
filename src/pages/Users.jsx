@@ -54,7 +54,7 @@ const EMPTY_FORM = {
 
 export default function Users() {
   const qc = useQueryClient();
-  const [editing, setEditing] = useState(null); // null | 'new' | userObject
+  const [creating, setCreating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const { data: users = [], isLoading, error } = useQuery({
@@ -65,7 +65,6 @@ export default function Users() {
   const createMut = useMutation({
     mutationFn: ({ email, password, displayName, username, avatarUrl, role }) =>
       usersRepo.createAuthUser({ email, password, displayName }).then(async (uid) => {
-        // Apply additional profile fields after the auth user is created.
         const extra = {};
         if (username) extra.username = username;
         if (avatarUrl) extra.avatarUrl = avatarUrl;
@@ -75,15 +74,7 @@ export default function Users() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] });
-      setEditing(null);
-    },
-  });
-
-  const updateMut = useMutation({
-    mutationFn: ({ id, fields }) => usersRepo.update(id, fields),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['users'] });
-      setEditing(null);
+      setCreating(false);
     },
   });
 
@@ -103,7 +94,7 @@ export default function Users() {
           <div className="text-sm text-zinc-500">
             {isLoading ? 'Loading…' : `${users.length} shown`}
           </div>
-          <Button size="sm" onClick={() => setEditing('new')} className="gap-1">
+          <Button size="sm" onClick={() => setCreating(true)} className="gap-1">
             <Plus className="w-4 h-4" /> New user
           </Button>
         </div>
@@ -128,7 +119,7 @@ export default function Users() {
                 <TableHead className="text-zinc-400 text-right">Videos</TableHead>
                 <TableHead className="text-zinc-400 text-right">Followers</TableHead>
                 <TableHead className="text-zinc-400">Role</TableHead>
-                <TableHead className="text-zinc-400 text-right">Actions</TableHead>
+                <TableHead className="text-zinc-400 text-right"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -162,24 +153,14 @@ export default function Users() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditing(u)}
-                        className="gap-1"
-                      >
-                        <Pencil className="w-3.5 h-3.5" /> Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setConfirmDelete(u)}
-                        className="gap-1 text-red-400 hover:text-red-300"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" /> Delete
-                      </Button>
-                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setConfirmDelete(u)}
+                      className="gap-1 text-red-400 hover:text-red-300"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -188,22 +169,12 @@ export default function Users() {
         </div>
       )}
 
-      <UserFormDialog
-        open={editing !== null}
-        mode={editing === 'new' ? 'create' : 'edit'}
-        user={editing && editing !== 'new' ? editing : null}
-        onOpenChange={(open) => !open && setEditing(null)}
-        pending={createMut.isPending || updateMut.isPending}
-        error={createMut.error ?? updateMut.error}
-        onSubmit={(form) => {
-          if (editing === 'new') {
-            createMut.mutate(form);
-          } else {
-            const { id, password, ...fields } = form;
-            void id; void password;
-            updateMut.mutate({ id: editing.id, fields });
-          }
-        }}
+      <CreateUserDialog
+        open={creating}
+        onOpenChange={setCreating}
+        pending={createMut.isPending}
+        error={createMut.error}
+        onSubmit={(form) => createMut.mutate(form)}
       />
 
       <AlertDialog
@@ -243,25 +214,12 @@ export default function Users() {
   );
 }
 
-function UserFormDialog({ open, mode, user, onOpenChange, onSubmit, pending, error }) {
+function CreateUserDialog({ open, onOpenChange, onSubmit, pending, error }) {
   const [form, setForm] = useState(EMPTY_FORM);
 
   useEffect(() => {
-    if (!open) return;
-    if (mode === 'edit' && user) {
-      setForm({
-        id: user.id ?? '',
-        email: user.email ?? '',
-        password: '',
-        displayName: user.displayName ?? '',
-        username: user.username ?? '',
-        avatarUrl: user.avatarUrl ?? '',
-        role: user.role ?? 'user',
-      });
-    } else {
-      setForm(EMPTY_FORM);
-    }
-  }, [open, mode, user]);
+    if (open) setForm(EMPTY_FORM);
+  }, [open]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -269,11 +227,10 @@ function UserFormDialog({ open, mode, user, onOpenChange, onSubmit, pending, err
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
         <DialogHeader>
-          <DialogTitle>{mode === 'create' ? 'Create user' : 'Edit user'}</DialogTitle>
+          <DialogTitle>Create user</DialogTitle>
           <DialogDescription>
-            {mode === 'create'
-              ? 'Creates a real Firebase Auth account with an auto-generated UID. Admin / advertiser custom claims still need to be granted via scripts/grant-admin.js.'
-              : 'Updates the Firestore profile document. The Firebase Auth account is unchanged.'}
+            Creates a real Firebase Auth account with an auto-generated UID. Admin /
+            advertiser custom claims still need to be granted via scripts/grant-admin.js.
           </DialogDescription>
         </DialogHeader>
 
@@ -284,32 +241,19 @@ function UserFormDialog({ open, mode, user, onOpenChange, onSubmit, pending, err
             onSubmit(form);
           }}
         >
-          {mode === 'edit' && (
-            <Field label="User ID">
-              <Input value={form.id} disabled className="font-mono text-xs" />
-            </Field>
-          )}
-          <Field label="Email" required={mode === 'create'}>
+          <Field label="Email" required>
+            <Input type="email" value={form.email} onChange={set('email')} required />
+          </Field>
+          <Field label="Password" required>
             <Input
-              type="email"
-              value={form.email}
-              onChange={set('email')}
-              disabled={mode === 'edit'}
-              required={mode === 'create'}
+              type="password"
+              value={form.password}
+              onChange={set('password')}
+              minLength={6}
+              required
+              placeholder="At least 6 characters"
             />
           </Field>
-          {mode === 'create' && (
-            <Field label="Password" required>
-              <Input
-                type="password"
-                value={form.password}
-                onChange={set('password')}
-                minLength={6}
-                required
-                placeholder="At least 6 characters"
-              />
-            </Field>
-          )}
           <Field label="Display name">
             <Input value={form.displayName} onChange={set('displayName')} />
           </Field>
@@ -340,7 +284,7 @@ function UserFormDialog({ open, mode, user, onOpenChange, onSubmit, pending, err
               Cancel
             </Button>
             <Button type="submit" disabled={pending}>
-              {pending ? 'Saving…' : mode === 'create' ? 'Create' : 'Save'}
+              {pending ? 'Creating…' : 'Create'}
             </Button>
           </DialogFooter>
         </form>
