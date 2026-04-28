@@ -89,11 +89,17 @@ export function EditProfileSheet({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <SafeAreaView style={styles.sheet} edges={['bottom']}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.handle} />
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={onClose}
+    >
+      <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.flex}
+        >
           <View style={styles.header}>
             <Pressable onPress={onClose} hitSlop={12}>
               <Text style={styles.cancel}>Cancel</Text>
@@ -162,21 +168,8 @@ export function EditProfileSheet({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingBottom: 16,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.borderAlt,
-    alignSelf: 'center',
-    marginTop: 8,
-  },
+  screen: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
