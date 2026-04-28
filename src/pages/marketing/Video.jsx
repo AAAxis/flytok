@@ -1,15 +1,26 @@
 import { useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Share2 } from 'lucide-react';
-import { videosRepo } from '@/lib/repositories';
+import { Share2 } from 'lucide-react';
+import { videosRepo, usersRepo } from '@/lib/repositories';
 import Logo from '@/components/common/Logo';
+
+function ownerLabelFromUser(user, fallbackUid) {
+  const name = (user?.displayName ?? '').trim() || (user?.username ?? '').trim();
+  if (name) return name;
+  return fallbackUid ? `User ${fallbackUid.slice(0, 6)}` : 'user';
+}
 
 export default function Video() {
   const { id } = useParams();
   const { data: video, isLoading } = useQuery({
     queryKey: ['video', id],
     queryFn: () => videosRepo.get(id),
+  });
+  const { data: owner } = useQuery({
+    queryKey: ['user', video?.ownerId],
+    queryFn: () => usersRepo.get(video.ownerId),
+    enabled: !!video?.ownerId,
   });
 
   // Update document title and meta tags for sharing
@@ -60,9 +71,6 @@ export default function Video() {
   return (
     <div className="min-h-screen bg-black text-zinc-100">
       <header className="px-4 py-3 flex items-center justify-between border-b border-zinc-900">
-        <Link to="/feed" className="text-zinc-400 hover:text-zinc-100 inline-flex items-center gap-1 text-sm">
-          <ArrowLeft className="w-4 h-4" /> Feed
-        </Link>
         <Link to="/"><Logo size="sm" /></Link>
         <div className="flex items-center gap-2">
           <a
@@ -93,7 +101,7 @@ export default function Video() {
 
         <div className="mt-4">
           <div className="text-sm font-semibold">
-            {video.ownerEmail ?? video.ownerId?.slice(0, 8)}
+            {ownerLabelFromUser(owner, video.ownerId)}
           </div>
           {video.caption && (
             <p className="text-sm text-zinc-300 mt-2 whitespace-pre-wrap">{video.caption}</p>

@@ -2,8 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Heart, MessageCircle, Share2, Volume2, VolumeX } from 'lucide-react';
-import { videosRepo } from '@/lib/repositories';
+import { videosRepo, usersRepo } from '@/lib/repositories';
 import Logo from '@/components/common/Logo';
+
+function OwnerName({ ownerId }) {
+  const { data: owner } = useQuery({
+    queryKey: ['user', ownerId],
+    queryFn: () => usersRepo.get(ownerId),
+    enabled: !!ownerId,
+  });
+  const name = (owner?.displayName ?? '').trim() || (owner?.username ?? '').trim();
+  return name || (ownerId ? `User ${ownerId.slice(0, 6)}` : 'user');
+}
 
 export default function Feed() {
   const { data: videos = [], isLoading } = useQuery({
@@ -109,7 +119,7 @@ function FeedSlide({ video, active, muted, onToggleMute, setRef }) {
 
         <div className="absolute left-4 right-20 bottom-6 text-white pointer-events-none">
           <div className="font-semibold text-sm">
-            {video.ownerEmail ?? video.ownerId?.slice(0, 8)}
+            <OwnerName ownerId={video.ownerId} />
           </div>
           {video.caption && (
             <div className="text-sm mt-1 leading-snug">{video.caption}</div>
