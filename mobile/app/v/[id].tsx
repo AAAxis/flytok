@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { videosCol, type VideoDoc } from '@/lib/firestore';
+import { useUserLabel } from '@/lib/useUserLabel';
 import { colors } from '@/lib/theme';
 
 export default function DeepLinkVideo() {
@@ -32,6 +33,8 @@ export default function DeepLinkVideo() {
     p.muted = false;
     if (video?.downloadURL) p.play();
   });
+
+  const ownerLabel = useUserLabel(video?.ownerId);
 
   if (loading) {
     return (
@@ -68,9 +71,7 @@ export default function DeepLinkVideo() {
         </Pressable>
 
         <View style={styles.bottom}>
-          <Text style={styles.author}>
-            {video.ownerEmail ?? video.ownerId.slice(0, 8)}
-          </Text>
+          <Text style={styles.author}>{ownerLabel}</Text>
           {video.caption ? <Text style={styles.caption}>{video.caption}</Text> : null}
         </View>
       </SafeAreaView>

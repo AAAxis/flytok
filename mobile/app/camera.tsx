@@ -6,6 +6,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -257,80 +258,107 @@ function ReviewScreen({
   });
 
   return (
-    <View style={styles.reviewScreen}>
+    <View style={styles.detailsScreen}>
       <Stack.Screen options={{ headerShown: false }} />
-      <VideoView
-        player={player}
-        style={StyleSheet.absoluteFill}
-        contentFit="cover"
-        nativeControls={false}
-      />
-      <SafeAreaView style={styles.reviewOverlay} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.flex}
         >
-          <View style={styles.reviewTop}>
+          <View style={styles.detailsHeader}>
             <Pressable onPress={onRetake} hitSlop={10} style={styles.iconButton}>
-              <Ionicons name="arrow-back" size={26} color="#fff" />
+              <Ionicons name="arrow-back" size={24} color={colors.text} />
             </Pressable>
-            <Text style={styles.reviewTitle}>New post</Text>
+            <Text style={styles.detailsTitle}>New post</Text>
             <View style={styles.iconButton} />
           </View>
 
-          <View style={styles.flex} />
-
-          <View style={styles.reviewBottom}>
-            <TextInput
-              value={caption}
-              onChangeText={onCaptionChange}
-              placeholder="Caption — use #tags and @mentions"
-              placeholderTextColor="rgba(255,255,255,0.6)"
-              multiline
-              style={styles.captionInput}
-              editable={!posting}
-            />
+          <ScrollView
+            contentContainerStyle={styles.detailsContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.captionRow}>
+              <TextInput
+                value={caption}
+                onChangeText={onCaptionChange}
+                placeholder="Describe your post — use #tags and @mentions"
+                placeholderTextColor={colors.textFaint}
+                multiline
+                style={styles.captionField}
+                editable={!posting}
+              />
+              <View style={styles.thumbWrap}>
+                <VideoView
+                  player={player}
+                  style={styles.thumbVideo}
+                  contentFit="cover"
+                  nativeControls={false}
+                />
+              </View>
+            </View>
 
             {(hashtags.length > 0 || mentions.length > 0) && (
               <View style={styles.chipRow}>
                 {hashtags.map((t) => (
-                  <View key={`h-${t}`} style={styles.chipTag}>
-                    <Text style={styles.chipText}>#{t}</Text>
+                  <View key={`h-${t}`} style={styles.chipTagLight}>
+                    <Text style={styles.chipTextLight}>#{t}</Text>
                   </View>
                 ))}
                 {mentions.map((m) => (
-                  <View key={`m-${m}`} style={styles.chipMention}>
-                    <Text style={styles.chipText}>@{m}</Text>
+                  <View key={`m-${m}`} style={styles.chipMentionLight}>
+                    <Text style={styles.chipTextLight}>@{m}</Text>
                   </View>
                 ))}
               </View>
             )}
 
-            <Pressable
-              onPress={() => setShowLocation(true)}
-              disabled={posting}
-              style={styles.locationButton}
-            >
-              <Ionicons
-                name={location ? 'location' : 'location-outline'}
-                size={18}
-                color={location ? colors.accent : '#fff'}
-              />
-              <Text style={styles.locationText} numberOfLines={1}>
-                {location?.label ?? 'Add location'}
-              </Text>
-              {location && (
-                <Pressable onPress={() => onLocationChange(null)} hitSlop={8}>
-                  <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.6)" />
-                </Pressable>
-              )}
-            </Pressable>
+            <View style={styles.optionList}>
+              <Pressable
+                onPress={() => setShowLocation(true)}
+                disabled={posting}
+                style={({ pressed }) => [styles.optionRow, pressed && styles.optionPressed]}
+              >
+                <Ionicons
+                  name={location ? 'location' : 'location-outline'}
+                  size={20}
+                  color={location ? colors.accent : colors.textMuted}
+                />
+                <Text style={styles.optionLabel} numberOfLines={1}>
+                  {location ? prettyLocationLabel(location) : 'Add location'}
+                </Text>
+                {location ? (
+                  <Pressable onPress={() => onLocationChange(null)} hitSlop={8}>
+                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                  </Pressable>
+                ) : (
+                  <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+                )}
+              </Pressable>
+            </View>
 
+            <Text style={styles.detailsHint}>
+              Tip: type #tags and @mentions in the caption — they'll be linked
+              automatically and help others find your post.
+            </Text>
+          </ScrollView>
+
+          <View style={styles.detailsFooter}>
+            <Pressable
+              onPress={onRetake}
+              disabled={posting}
+              style={({ pressed }) => [
+                styles.draftButton,
+                pressed && styles.draftPressed,
+              ]}
+            >
+              <Text style={styles.draftText}>Discard</Text>
+            </Pressable>
             <Pressable
               onPress={onPost}
               disabled={posting}
               style={({ pressed }) => [
                 styles.postButton,
+                styles.postButtonFlex,
                 posting && styles.postDisabled,
                 pressed && styles.postPressed,
               ]}
@@ -344,8 +372,25 @@ function ReviewScreen({
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      <LocationPickerModal
+        visible={showLocation}
+        onClose={() => setShowLocation(false)}
+        onPick={(loc) => {
+          onLocationChange(loc);
+          setShowLocation(false);
+        }}
+      />
     </View>
   );
+}
+
+function prettyLocationLabel(loc: VideoLocation): string {
+  const label = loc.label?.trim();
+  if (!label) return 'Pinned location';
+  // Reject pure "lat, lng" strings — iOS sometimes returns those as place.name.
+  if (/^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/.test(label)) return 'Pinned location';
+  return label;
 }
 
 function LocationPickerModal({
@@ -624,4 +669,88 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   locResultText: { color: colors.text, fontSize: 14, flex: 1 },
+
+  // Details / "step 2" screen — TikTok-style post editor
+  detailsScreen: { flex: 1, backgroundColor: colors.bg },
+  detailsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  detailsTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  detailsContent: { padding: 16, gap: 16 },
+  captionRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  captionField: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 21,
+    minHeight: 110,
+    padding: 0,
+    textAlignVertical: 'top',
+  },
+  thumbWrap: {
+    width: 80,
+    height: 110,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  thumbVideo: { width: '100%', height: '100%' },
+  chipTagLight: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(56, 189, 248, 0.18)',
+  },
+  chipMentionLight: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  chipTextLight: { color: colors.text, fontSize: 12, fontWeight: '500' },
+  optionList: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  optionPressed: { backgroundColor: colors.surfaceAlt },
+  optionLabel: { flex: 1, color: colors.text, fontSize: 14 },
+  detailsHint: { color: colors.textDim, fontSize: 12, lineHeight: 17 },
+  detailsFooter: {
+    flexDirection: 'row',
+    gap: 8,
+    padding: 16,
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  draftButton: {
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  draftPressed: { backgroundColor: colors.surfaceAlt },
+  draftText: { color: colors.text, fontWeight: '600' },
+  postButtonFlex: { flex: 1 },
 });

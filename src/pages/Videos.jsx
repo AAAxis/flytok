@@ -102,7 +102,7 @@ export default function Videos() {
                   </TableCell>
                   <TableCell className="text-zinc-400">{fmtDate(v.createdAt)}</TableCell>
                   <TableCell className="text-zinc-400 text-right">{fmtNum(v.viewCount)}</TableCell>
-                  <TableCell className="text-zinc-400 text-right">{fmtNum(v.likeCount)}</TableCell>
+                  <TableCell className="text-zinc-400 text-right">{fmtNum(Math.max(0, v.likeCount ?? 0))}</TableCell>
                   <TableCell className="text-zinc-400 text-right">{fmtNum(v.commentCount)}</TableCell>
                   <TableCell>
                     <Badge variant={v.status === 'banned' ? 'destructive' : 'secondary'}>

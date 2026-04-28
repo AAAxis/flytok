@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import auth from '@react-native-firebase/auth';
-import { Alert, Dimensions, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Dimensions, Image, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { commentsCol, deleteOwnVideo, follow, followingCol, likesCol, savesCol, toggleLike, toggleSave, unfollow, type VideoDoc } from '@/lib/firestore';
-import { useUserLabel } from '@/lib/useUserLabel';
+import { useUserLabel, useUserProfile } from '@/lib/useUserLabel';
 import { useAuth } from '@/lib/AuthContext';
 import { useCachedVideoUri } from '@/lib/videoCache';
 import { CommentsSheet } from '@/components/CommentsSheet';
@@ -33,7 +34,8 @@ export function FeedItem({
   const [showEdit, setShowEdit] = useState(false);
   const [saved, setSaved] = useState(false);
   const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(item.likeCount ?? 0);
+  const [likeCount, setLikeCount] = useState(Math.max(0, item.likeCount ?? 0));
+  const [holding, setHolding] = useState(false);
 
   const cachedUri = useCachedVideoUri(item.downloadURL);
   const player = useVideoPlayer(cachedUri ?? item.downloadURL, (p) => {
@@ -68,7 +70,7 @@ export function FeedItem({
     return savesCol(me.uid)
       .doc(item.id)
       .onSnapshot(
-        (snap) => setSaved(snap.exists),
+        (snap) => setSaved(!!snap.data()),
         () => setSaved(false),
       );
   }, [me, item.id]);
@@ -78,14 +80,27 @@ export function FeedItem({
     return likesCol(item.id)
       .doc(me.uid)
       .onSnapshot(
-        (snap) => setLiked(snap.exists),
+        (snap) => setLiked(!!snap.data()),
         () => setLiked(false),
       );
   }, [me, item.id]);
 
   async function handleSave() {
-    if (!me) return;
-    await toggleSave(item.id);
+    console.log('[save] tapped', { videoId: item.id, signedIn: !!me, saved });
+    if (!me) {
+      Alert.alert('Sign in required', 'Sign in to save videos.');
+      return;
+    }
+    const next = !saved;
+    setSaved(next); // optimistic
+    try {
+      const result = await toggleSave(item.id);
+      console.log('[save] toggle result', result);
+    } catch (err: any) {
+      console.warn('[save] failed', err);
+      setSaved(!next);
+      Alert.alert('Could not save', err?.message ?? 'Try again later.');
+    }
   }
 
   async function handleLike() {
@@ -113,19 +128,55 @@ export function FeedItem({
   const isOwner = me?.uid === item.ownerId;
   const canManage = isOwner || isAdmin;
   const ownerLabel = useUserLabel(item.ownerId);
+  const ownerProfile = useUserProfile(item.ownerId);
+  const router = useRouter();
+  function openOwnerProfile() {
+    console.log('[author-tap]', { ownerId: item.ownerId, isOwner });
+    router.push(`/user/${item.ownerId}` as never);
+  }
 
   return (
     <View style={styles.item}>
-      <Pressable onPress={() => (player.playing ? player.pause() : player.play())} style={styles.fill}>
+      <Pressable
+        onLongPress={() => {
+          // TikTok-style: only a press-and-hold pauses. Quick taps do nothing
+          // so the user can scroll/tap UI elements without stuttering.
+          player.pause();
+          setHolding(true);
+        }}
+        onPressOut={() => {
+          if (!holding) return;
+          setHolding(false);
+          if (active) player.play();
+        }}
+        delayLongPress={180}
+        style={styles.fill}
+      >
         <VideoView player={player} style={styles.video} contentFit="cover" nativeControls={false} />
       </Pressable>
+      {holding && (
+        <View style={styles.holdIndicator} pointerEvents="none">
+          <Ionicons name="pause" size={64} color="rgba(255,255,255,0.85)" />
+        </View>
+      )}
 
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.bottomLeft}>
           <View style={styles.authorRow}>
-            <Text style={styles.author}>
-              {item.ownerEmail ?? item.ownerId.slice(0, 8)}
-            </Text>
+            <Pressable
+              onPress={openOwnerProfile}
+              hitSlop={6}
+              style={styles.authorTap}
+            >
+              {ownerProfile?.photoURL ? (
+                <Image source={{ uri: ownerProfile.photoURL }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.avatarFallback]}>
+                  <Ionicons name="person" size={16} color={colors.text} />
+                </View>
+              )}
+              <Text style={styles.author}>{ownerLabel}</Text>
+            </Pressable>
             {!isOwner && (
               <Pressable
                 onPress={toggleFollow}
@@ -148,7 +199,7 @@ export function FeedItem({
               size={32}
               color={liked ? '#ff3b5c' : colors.text}
             />
-            <Text style={styles.actionLabel}>{likeCount}</Text>
+            <Text style={styles.actionLabel}>{Math.max(0, likeCount)}</Text>
           </Pressable>
           <Pressable
             onPress={() => setShowComments(true)}
@@ -265,6 +316,11 @@ const styles = StyleSheet.create({
   item: { width, height, backgroundColor: '#000' },
   fill: { ...StyleSheet.absoluteFillObject },
   video: { width, height },
+  holdIndicator: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     flexDirection: 'row',
@@ -274,6 +330,19 @@ const styles = StyleSheet.create({
   },
   bottomLeft: { flex: 1, gap: 6, marginRight: 12 },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  authorTap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderColor: 'rgba(255,255,255,0.6)',
+    borderWidth: 1,
+  },
+  avatarFallback: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   author: { color: colors.text, fontSize: 14, fontWeight: '700' },
   followPill: {
     backgroundColor: colors.accent,

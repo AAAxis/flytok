@@ -16,7 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useRouter } from 'expo-router';
-import { extractHashtags, uploadVideo, type VideoLocation } from '@/lib/firestore';
+import { extractHashtags, extractMentions, uploadVideo, type VideoLocation } from '@/lib/firestore';
 import { geocodeAddress, getCurrentLocationLabeled, type GeoResult } from '@/lib/geocode';
 import { colors } from '@/lib/theme';
 
@@ -28,6 +28,7 @@ type LocationState =
 
 export default function Upload() {
   const router = useRouter();
+  const [step, setStep] = useState<1 | 2>(1);
   const [uri, setUri] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [progress, setProgress] = useState<'idle' | 'uploading'>('idle');
@@ -37,13 +38,51 @@ export default function Upload() {
   const [locState, setLocState] = useState<LocationState>({ status: 'idle' });
   const [usingCurrent, setUsingCurrent] = useState(false);
 
+  const [tagInput, setTagInput] = useState('');
+  const [extraTags, setExtraTags] = useState<string[]>([]);
+  const [mentionInput, setMentionInput] = useState('');
+  const [mentions, setMentions] = useState<string[]>([]);
+
   const player = useVideoPlayer(uri ?? '', (p) => {
     p.loop = true;
     p.muted = true;
     if (uri) p.play();
   });
 
-  const hashtags = useMemo(() => extractHashtags(caption), [caption]);
+  // Tags = #hashtags found in the caption + any the user added explicitly on step 2
+  const captionHashtags = useMemo(() => extractHashtags(caption), [caption]);
+  const allTags = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const t of [...captionHashtags, ...extraTags]) {
+      const norm = t.toLowerCase();
+      if (!seen.has(norm)) {
+        seen.add(norm);
+        out.push(norm);
+      }
+    }
+    return out;
+  }, [captionHashtags, extraTags]);
+
+  function commitTag() {
+    const raw = tagInput.replace(/^#+/, '').trim().toLowerCase();
+    if (!raw) return;
+    if (!allTags.includes(raw)) setExtraTags((prev) => [...prev, raw]);
+    setTagInput('');
+  }
+  function removeTag(tag: string) {
+    setExtraTags((prev) => prev.filter((t) => t !== tag));
+  }
+
+  function commitMention() {
+    const raw = mentionInput.replace(/^@+/, '').trim().toLowerCase();
+    if (!raw) return;
+    if (!mentions.includes(raw)) setMentions((prev) => [...prev, raw]);
+    setMentionInput('');
+  }
+  function removeMention(handle: string) {
+    setMentions((prev) => prev.filter((m) => m !== handle));
+  }
 
   async function pickVideo() {
     const res = await ImagePicker.launchImageLibraryAsync({
@@ -116,12 +155,27 @@ export default function Upload() {
 
   async function handleUpload() {
     if (!uri) return;
+    // Pull any @mentions left in the caption into the explicit list too.
+    const captionMentions = extractMentions(caption);
+    const finalMentions = Array.from(new Set([...mentions, ...captionMentions]));
+
     setProgress('uploading');
     try {
-      await uploadVideo({ uri, caption, location, hashtags });
+      await uploadVideo({
+        uri,
+        caption,
+        location,
+        hashtags: allTags,
+        mentions: finalMentions,
+      });
       setUri(null);
       setCaption('');
+      setExtraTags([]);
+      setMentions([]);
+      setTagInput('');
+      setMentionInput('');
       clearLocation();
+      setStep(1);
       router.replace('/');
     } catch (err: any) {
       Alert.alert('Upload failed', err?.message ?? 'Unknown error');
@@ -139,9 +193,12 @@ export default function Upload() {
         style={styles.flex}
       >
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>New post</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>New post</Text>
+            <Text style={styles.stepBadge}>Step {step} of 2</Text>
+          </View>
 
-          {uri ? (
+          {step === 1 && uri ? (
             <View style={styles.preview}>
               <VideoView
                 player={player}
@@ -157,7 +214,7 @@ export default function Upload() {
                 <Text style={styles.changeText}>Change</Text>
               </Pressable>
             </View>
-          ) : (
+          ) : step === 1 ? (
             <View style={styles.pickerRow}>
               <Pressable onPress={pickVideo} style={({ pressed }) => [styles.pickerButton, pressed && styles.pickerPressed]}>
                 <Text style={styles.pickerLabel}>Choose from library</Text>
@@ -166,8 +223,9 @@ export default function Upload() {
                 <Text style={styles.pickerLabel}>Record video</Text>
               </Pressable>
             </View>
-          )}
+          ) : null}
 
+          {step === 1 && <>
           <Text style={styles.label}>Caption</Text>
           <TextInput
             value={caption}
@@ -178,9 +236,9 @@ export default function Upload() {
             style={styles.input}
             editable={editable}
           />
-          {hashtags.length > 0 && (
+          {captionHashtags.length > 0 && (
             <View style={styles.tagRow}>
-              {hashtags.map((tag) => (
+              {captionHashtags.map((tag) => (
                 <View key={tag} style={styles.tagChip}>
                   <Text style={styles.tagText}>#{tag}</Text>
                 </View>
@@ -266,22 +324,146 @@ export default function Upload() {
               )}
             </>
           )}
+          </>}
 
-          <Pressable
-            onPress={handleUpload}
-            disabled={!uri || progress === 'uploading'}
-            style={({ pressed }) => [
-              styles.submit,
-              (!uri || progress === 'uploading') && styles.submitDisabled,
-              pressed && styles.submitPressed,
-            ]}
-          >
-            {progress === 'uploading' ? (
-              <ActivityIndicator color={colors.bg} />
-            ) : (
-              <Text style={styles.submitText}>Post</Text>
-            )}
-          </Pressable>
+          {step === 2 && (
+            <>
+              <Text style={styles.label}>Tags</Text>
+              <Text style={styles.helper}>Add hashtags so people discovering this place can find your video.</Text>
+              <View style={styles.chipInputRow}>
+                <Text style={styles.chipPrefix}>#</Text>
+                <TextInput
+                  value={tagInput}
+                  onChangeText={setTagInput}
+                  onSubmitEditing={commitTag}
+                  placeholder="travel"
+                  placeholderTextColor={colors.textFaint}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  style={styles.chipInput}
+                  editable={editable}
+                />
+                <Pressable
+                  onPress={commitTag}
+                  disabled={!tagInput.trim()}
+                  style={({ pressed }) => [
+                    styles.chipAddBtn,
+                    !tagInput.trim() && styles.submitDisabled,
+                    pressed && styles.pickerPressed,
+                  ]}
+                  hitSlop={6}
+                >
+                  <Ionicons name="add" size={18} color={colors.text} />
+                </Pressable>
+              </View>
+              {allTags.length > 0 && (
+                <View style={styles.tagRow}>
+                  {allTags.map((tag) => {
+                    const fromCaption = captionHashtags.includes(tag);
+                    return (
+                      <Pressable
+                        key={tag}
+                        onPress={() => !fromCaption && removeTag(tag)}
+                        style={[styles.tagChip, !fromCaption && styles.removableChip]}
+                      >
+                        <Text style={styles.tagText}>#{tag}</Text>
+                        {!fromCaption && (
+                          <Ionicons name="close" size={12} color={colors.accent} />
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+
+              <Text style={styles.label}>Mentions</Text>
+              <Text style={styles.helper}>Tag other travelers who were there or whose work you’re referencing.</Text>
+              <View style={styles.chipInputRow}>
+                <Text style={styles.chipPrefix}>@</Text>
+                <TextInput
+                  value={mentionInput}
+                  onChangeText={setMentionInput}
+                  onSubmitEditing={commitMention}
+                  placeholder="username"
+                  placeholderTextColor={colors.textFaint}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  style={styles.chipInput}
+                  editable={editable}
+                />
+                <Pressable
+                  onPress={commitMention}
+                  disabled={!mentionInput.trim()}
+                  style={({ pressed }) => [
+                    styles.chipAddBtn,
+                    !mentionInput.trim() && styles.submitDisabled,
+                    pressed && styles.pickerPressed,
+                  ]}
+                  hitSlop={6}
+                >
+                  <Ionicons name="add" size={18} color={colors.text} />
+                </Pressable>
+              </View>
+              {mentions.length > 0 && (
+                <View style={styles.tagRow}>
+                  {mentions.map((handle) => (
+                    <Pressable
+                      key={handle}
+                      onPress={() => removeMention(handle)}
+                      style={[styles.tagChip, styles.removableChip]}
+                    >
+                      <Text style={styles.tagText}>@{handle}</Text>
+                      <Ionicons name="close" size={12} color={colors.accent} />
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </>
+          )}
+
+          {step === 1 ? (
+            <Pressable
+              onPress={() => setStep(2)}
+              disabled={!uri}
+              style={({ pressed }) => [
+                styles.submit,
+                !uri && styles.submitDisabled,
+                pressed && styles.submitPressed,
+              ]}
+            >
+              <Text style={styles.submitText}>Next</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.stepNav}>
+              <Pressable
+                onPress={() => setStep(1)}
+                disabled={progress === 'uploading'}
+                style={({ pressed }) => [styles.backBtn, pressed && styles.pickerPressed]}
+                hitSlop={6}
+              >
+                <Ionicons name="arrow-back" size={16} color={colors.text} />
+                <Text style={styles.backBtnText}>Back</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleUpload}
+                disabled={!uri || progress === 'uploading'}
+                style={({ pressed }) => [
+                  styles.submit,
+                  styles.submitFlex,
+                  (!uri || progress === 'uploading') && styles.submitDisabled,
+                  pressed && styles.submitPressed,
+                ]}
+              >
+                {progress === 'uploading' ? (
+                  <ActivityIndicator color={colors.bg} />
+                ) : (
+                  <Text style={styles.submitText}>Post</Text>
+                )}
+              </Pressable>
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -292,7 +474,54 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   container: { padding: 24, gap: 16 },
-  title: { color: colors.text, fontSize: 24, fontWeight: '700', marginBottom: 8 },
+  titleRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 },
+  title: { color: colors.text, fontSize: 24, fontWeight: '700' },
+  stepBadge: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  helper: { color: colors.textMuted, fontSize: 12, marginTop: -8, marginBottom: 4 },
+  chipInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+  },
+  chipPrefix: { color: colors.textMuted, fontSize: 16, marginRight: 4 },
+  chipInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 14,
+    paddingVertical: 10,
+  },
+  chipAddBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removableChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingRight: 8,
+  },
+  stepNav: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  backBtnText: { color: colors.text, fontSize: 14, fontWeight: '500' },
+  submitFlex: { flex: 1, marginTop: 0 },
   preview: {
     aspectRatio: 9 / 16,
     backgroundColor: colors.surface,

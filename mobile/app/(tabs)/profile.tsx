@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import auth from '@react-native-firebase/auth';
+import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
   Image,
@@ -13,55 +14,141 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
+  diagnoseSaves,
   getFollowCounts,
   getMyVideos,
   getSavedVideoIds,
   getVideosByIds,
+  savesCol,
   usersCol,
   type VideoDoc,
 } from '@/lib/firestore';
+import { Alert } from 'react-native';
 import { VideoGrid } from '@/components/VideoGrid';
 import { SettingsSheet } from '@/components/SettingsSheet';
 import { EditProfileSheet } from '@/components/EditProfileSheet';
+import { FollowListSheet } from '@/components/FollowListSheet';
+import { getCachedProfile, setCachedProfile } from '@/lib/profileCache';
 import { colors } from '@/lib/theme';
 
 type Tab = 'mine' | 'saved';
 
 export default function Profile() {
   const me = auth().currentUser;
-  const [displayName, setDisplayName] = useState<string | null>(null);
-  const [photoURL, setPhotoURL] = useState<string | null>(null);
-  const [bio, setBio] = useState<string | null>(null);
-  const [mine, setMine] = useState<VideoDoc[]>([]);
-  const [saved, setSaved] = useState<VideoDoc[]>([]);
-  const [counts, setCounts] = useState({ following: 0, followers: 0 });
-  const [loading, setLoading] = useState(true);
+  const cached = me ? getCachedProfile(me.uid) : null;
+  const [displayName, setDisplayName] = useState<string | null>(cached?.displayName ?? null);
+  const [photoURL, setPhotoURL] = useState<string | null>(cached?.photoURL ?? null);
+  const [bio, setBio] = useState<string | null>(cached?.bio ?? null);
+  const [mine, setMine] = useState<VideoDoc[]>(cached?.mine ?? []);
+  const [saved, setSaved] = useState<VideoDoc[]>(cached?.saved ?? []);
+  const [counts, setCounts] = useState(cached?.counts ?? { following: 0, followers: 0 });
+  // Only block on the spinner if we have nothing cached at all.
+  const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>('mine');
   const [showSettings, setShowSettings] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [followList, setFollowList] = useState<null | 'following' | 'followers'>(null);
 
   const load = useCallback(async () => {
     if (!me) return;
     const [profileSnap, myVideos, savedIds, followCounts] = await Promise.all([
       usersCol().doc(me.uid).get(),
-      getMyVideos(me.uid).catch(() => []),
-      getSavedVideoIds(me.uid).catch(() => []),
+      getMyVideos(me.uid).catch((err) => {
+        console.warn('[profile] getMyVideos failed:', err);
+        return [];
+      }),
+      getSavedVideoIds(me.uid).catch((err) => {
+        console.warn('[profile] getSavedVideoIds failed:', err);
+        return [];
+      }),
       getFollowCounts(me.uid),
     ]);
+    console.log('[profile] loaded', {
+      uid: me.uid,
+      mine: myVideos.length,
+      savedIds: savedIds.length,
+    });
     const profileData = profileSnap.data() ?? {};
     setDisplayName((profileData.displayName as string) ?? null);
     setPhotoURL((profileData.photoURL as string) ?? null);
     setBio((profileData.bio as string) ?? null);
     setMine(myVideos);
     setCounts(followCounts);
-    const savedVideos = await getVideosByIds(savedIds).catch(() => []);
+    const savedVideos = await getVideosByIds(savedIds).catch((err) => {
+      console.warn('[profile] getVideosByIds failed:', err);
+      return [];
+    });
+    console.log('[profile] saved fetched', {
+      requestedIds: savedIds.length,
+      gotVideos: savedVideos.length,
+      missingIds: savedIds.filter((id) => !savedVideos.find((v) => v.id === id)),
+    });
     setSaved(savedVideos);
+    if (me) {
+      setCachedProfile(me.uid, {
+        displayName: (profileData.displayName as string) ?? null,
+        photoURL: (profileData.photoURL as string) ?? null,
+        bio: (profileData.bio as string) ?? null,
+        mine: myVideos,
+        saved: savedVideos,
+        counts: followCounts,
+        fetchedAt: Date.now(),
+      });
+    }
   }, [me]);
 
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, [load]);
+
+  // One-shot diagnostic to expose silent rule failures on the saves
+  // subcollection. Runs once per session per uid.
+  useEffect(() => {
+    if (!me) return;
+    const flag = `__savesDiagRun_${me.uid}`;
+    const g = globalThis as Record<string, unknown>;
+    if (g[flag]) return;
+    g[flag] = true;
+    diagnoseSaves().then((err) => {
+      if (err) {
+        Alert.alert(
+          'Saves diagnostic',
+          `Saves cannot be persisted:\n\n${err}\n\nFix: publish the Firestore rule for users/{uid}/saves.`,
+        );
+      }
+    });
+  }, [me]);
+
+  // Live-update the Saved tab whenever the user saves/unsaves anywhere in the app.
+  useEffect(() => {
+    if (!me) return;
+    return savesCol(me.uid).onSnapshot(
+      async (snap) => {
+        const ids = snap.docs.map((d) => d.id);
+        console.log('[profile] saves snapshot', { count: ids.length });
+        if (!ids.length) {
+          setSaved([]);
+          return;
+        }
+        try {
+          const videos = await getVideosByIds(ids);
+          setSaved(videos);
+        } catch (err) {
+          console.warn('[profile] saves snapshot fetch failed:', err);
+        }
+      },
+      (err) => console.warn('[profile] saves listener error:', err),
+    );
+  }, [me]);
+
+  // Re-fetch when the tab is focused so saves/follows made in the feed
+  // surface immediately when the user switches back here.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   async function onRefresh() {
     setRefreshing(true);
@@ -115,8 +202,17 @@ export default function Profile() {
 
               <View style={styles.statsRow}>
                 <Stat label="Posts" value={mine.length} />
-                <Stat label="Following" value={counts.following} />
-                <Stat label="Followers" value={counts.followers} />
+                <Stat label="Saved" value={saved.length} />
+                <Stat
+                  label="Following"
+                  value={counts.following}
+                  onPress={() => setFollowList('following')}
+                />
+                <Stat
+                  label="Followers"
+                  value={counts.followers}
+                  onPress={() => setFollowList('followers')}
+                />
               </View>
             </View>
 
@@ -155,16 +251,38 @@ export default function Profile() {
         onClose={() => setShowEdit(false)}
         onSaved={load}
       />
+      <FollowListSheet
+        uid={me?.uid ?? null}
+        mode={followList ?? 'following'}
+        visible={followList !== null}
+        onClose={() => setFollowList(null)}
+      />
     </SafeAreaView>
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <View style={styles.stat}>
+function Stat({
+  label,
+  value,
+  onPress,
+}: {
+  label: string;
+  value: number;
+  onPress?: () => void;
+}) {
+  const content = (
+    <>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-    </View>
+    </>
+  );
+  if (!onPress) {
+    return <View style={styles.stat}>{content}</View>;
+  }
+  return (
+    <Pressable onPress={onPress} hitSlop={6} style={styles.stat}>
+      {content}
+    </Pressable>
   );
 }
 
@@ -226,7 +344,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   bio: { color: colors.textMuted, fontSize: 13, textAlign: 'center', marginTop: 16, paddingHorizontal: 24 },
-  statsRow: { flexDirection: 'row', gap: 32, marginTop: 16 },
+  statsRow: { flexDirection: 'row', gap: 24, marginTop: 16 },
   stat: { alignItems: 'center' },
   statValue: { color: colors.text, fontSize: 16, fontWeight: '700' },
   statLabel: { color: colors.textDim, fontSize: 12 },

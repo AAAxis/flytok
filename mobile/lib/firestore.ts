@@ -98,71 +98,121 @@ export async function toggleLike(videoId: string): Promise<boolean> {
   const videoRef = videosCol().doc(videoId);
   const likeRef = likesCol(videoId).doc(user.uid);
 
-  const snap = await likeRef.get();
-  if (snap.exists) {
-    await Promise.all([
-      likeRef.delete(),
-      videoRef.set(
-        { likeCount: firestore.FieldValue.increment(-1) },
-        { merge: true },
-      ),
-    ]);
-    return false;
-  }
-  await Promise.all([
-    likeRef.set({ createdAt: firestore.FieldValue.serverTimestamp() }),
-    videoRef.set(
-      { likeCount: firestore.FieldValue.increment(1) },
-      { merge: true },
-    ),
-  ]);
-  track.videoLiked(videoId);
-  return true;
+  // Atomic read+write so concurrent taps can't double-decrement.
+  const liked = await firestore().runTransaction(async (tx) => {
+    const likeSnap = await tx.get(likeRef);
+    const videoSnap = await tx.get(videoRef);
+    const current = Math.max(0, (videoSnap.data()?.likeCount as number | undefined) ?? 0);
+
+    if (likeSnap.exists) {
+      tx.delete(likeRef);
+      tx.set(videoRef, { likeCount: Math.max(0, current - 1) }, { merge: true });
+      return false;
+    }
+    tx.set(likeRef, { createdAt: firestore.FieldValue.serverTimestamp() });
+    tx.set(videoRef, { likeCount: current + 1 }, { merge: true });
+    return true;
+  });
+
+  if (liked) track.videoLiked(videoId);
+  return liked;
 }
 
 export async function toggleSave(videoId: string) {
   const user = requireUser();
   const ref = savesCol(user.uid).doc(videoId);
-  const snap = await ref.get();
-  if (snap.exists) {
+  // Force a server read so a stale local cache doesn't fool us.
+  const snap = await ref.get({ source: 'server' });
+  if (snap.data()) {
     await ref.delete();
+    const after = await ref.get({ source: 'server' });
+    if (after.data()) throw new Error('Delete blocked by Firestore rules');
     track.videoSaved(videoId, false);
     return false;
   }
   await ref.set({ createdAt: firestore.FieldValue.serverTimestamp() });
+  // Confirm the write reached the server. RNFirebase otherwise resolves the
+  // promise from local cache even when the sync was rejected by rules.
+  const after = await ref.get({ source: 'server' });
+  if (!after.data()) {
+    throw new Error('Write blocked — Firestore rules prevented saving');
+  }
   track.videoSaved(videoId, true);
   return true;
 }
 
+/**
+ * Diagnostic: probes the saves subcollection for the current user and returns
+ * a human-readable error string, or null on success. The Profile screen runs
+ * this once on mount and surfaces the result via Alert so we know exactly why
+ * saves aren't sticking (rules, network, etc.) instead of failing silently.
+ */
+export async function diagnoseSaves(): Promise<string | null> {
+  const user = auth().currentUser;
+  if (!user) return 'Not signed in';
+  const probe = savesCol(user.uid).doc('__probe');
+  try {
+    await probe.set({ probe: true, at: firestore.FieldValue.serverTimestamp() });
+    const snap = await probe.get({ source: 'server' });
+    if (!snap.data()) {
+      return 'Write succeeded locally but server has no doc — Firestore rules deny writes to users/{uid}/saves';
+    }
+    await probe.delete();
+    return null;
+  } catch (err: any) {
+    return `${err?.code ?? 'error'}: ${err?.message ?? 'unknown'}`;
+  }
+}
+
 export async function getSavedVideoIds(uid: string) {
-  const snap = await savesCol(uid).orderBy('createdAt', 'desc').limit(200).get();
-  return snap.docs.map((d) => d.id);
+  try {
+    const snap = await savesCol(uid).orderBy('createdAt', 'desc').limit(200).get();
+    return snap.docs.map((d) => d.id);
+  } catch (err) {
+    console.warn('[saves] ordered query failed, falling back:', err);
+    const snap = await savesCol(uid).limit(200).get();
+    return snap.docs.map((d) => d.id);
+  }
 }
 
 export async function getVideosByIds(ids: string[]): Promise<VideoDoc[]> {
   if (ids.length === 0) return [];
-  const chunks: string[][] = [];
-  for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
-  const results: VideoDoc[] = [];
-  for (const chunk of chunks) {
-    const snap = await videosCol().where(firestore.FieldPath.documentId(), 'in', chunk).get();
-    snap.docs.forEach((d) =>
-      results.push({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }),
-    );
-  }
-  // Preserve original order
-  const indexOf = new Map(ids.map((id, i) => [id, i]));
-  results.sort((a, b) => (indexOf.get(a.id) ?? 0) - (indexOf.get(b.id) ?? 0));
-  return results;
+  // Fetch each doc directly by id in parallel. Avoids the
+  // `where(documentId() in [...])` query path which has been seen to silently
+  // return zero results on some RNFB versions even when the docs exist.
+  const snaps = await Promise.all(ids.map((id) => videosCol().doc(id).get()));
+  const out: VideoDoc[] = [];
+  snaps.forEach((s, i) => {
+    const data = s.data();
+    if (data) out.push({ id: ids[i], ...(data as Omit<VideoDoc, 'id'>) });
+  });
+  return out;
 }
 
 export async function getMyVideos(uid: string): Promise<VideoDoc[]> {
-  const snap = await videosCol()
-    .where('ownerId', '==', uid)
-    .orderBy('createdAt', 'desc')
-    .limit(200)
-    .get();
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }));
+  try {
+    const snap = await videosCol()
+      .where('ownerId', '==', uid)
+      .orderBy('createdAt', 'desc')
+      .limit(200)
+      .get();
+    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }));
+  } catch (err) {
+    // Composite index (ownerId asc + createdAt desc) likely missing — fall back
+    // to the unordered query and sort client-side.
+    console.warn('[my-videos] indexed query failed, falling back:', err);
+    const snap = await videosCol()
+      .where('ownerId', '==', uid)
+      .limit(200)
+      .get();
+    const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }));
+    items.sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? 0;
+      const tb = b.createdAt?.toMillis?.() ?? 0;
+      return tb - ta;
+    });
+    return items;
+  }
 }
 
 export async function updateProfile({

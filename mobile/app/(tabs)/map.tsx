@@ -73,7 +73,7 @@ export default function Map() {
                 longitude: v.location.longitude,
               }}
               title={v.location.label ?? v.caption ?? 'Video'}
-              description={v.ownerEmail ?? undefined}
+              description={v.caption ?? undefined}
               onCalloutPress={() => router.push('/')}
             />
           ) : null,

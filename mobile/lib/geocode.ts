@@ -6,17 +6,25 @@ export type GeoResult = {
   longitude: number;
 };
 
+// iOS sometimes returns place.name as a raw "lat, lng" string when the pin
+// isn't on a known address. Reject those — we want a real place label.
+function looksLikeCoords(s: string): boolean {
+  return /^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/.test(s.trim());
+}
+
 function placeLabel(p: Location.LocationGeocodedAddress, fallback?: string): string {
-  const parts = [p.name, p.city ?? p.subregion, p.region, p.country].filter(
-    (x): x is string => Boolean(x),
-  );
+  const candidates = [p.name, p.street, p.city, p.subregion, p.region, p.country];
+  const parts = candidates
+    .filter((x): x is string => Boolean(x) && !looksLikeCoords(x));
   // dedupe consecutive duplicates (e.g., when name === city)
   const out: string[] = [];
   for (const part of parts) {
     if (out[out.length - 1] !== part) out.push(part);
   }
   const label = out.join(', ');
-  return label || fallback || 'Unknown place';
+  if (label) return label;
+  if (p.country && !looksLikeCoords(p.country)) return p.country;
+  return fallback || 'Pinned location';
 }
 
 export async function geocodeAddress(query: string, max = 5): Promise<GeoResult[]> {
