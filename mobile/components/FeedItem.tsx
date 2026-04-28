@@ -4,6 +4,7 @@ import { Alert, Dimensions, Pressable, Share, StyleSheet, Text, View } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { commentsCol, deleteOwnVideo, follow, followingCol, likesCol, savesCol, toggleLike, toggleSave, unfollow, type VideoDoc } from '@/lib/firestore';
+import { useUserLabel } from '@/lib/useUserLabel';
 import { useAuth } from '@/lib/AuthContext';
 import { useCachedVideoUri } from '@/lib/videoCache';
 import { CommentsSheet } from '@/components/CommentsSheet';
@@ -111,6 +112,7 @@ export function FeedItem({
   const { isAdmin } = useAuth();
   const isOwner = me?.uid === item.ownerId;
   const canManage = isOwner || isAdmin;
+  const ownerLabel = useUserLabel(item.ownerId);
 
   return (
     <View style={styles.item}>
