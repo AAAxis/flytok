@@ -51,6 +51,17 @@ export const videosRepo = {
     return snap.exists() ? { id: snap.id, ...snap.data() } : null;
   },
 
+  countByOwner: async (uid) => {
+    try {
+      const snap = await getCountFromServer(
+        query(videosCol(), where('ownerId', '==', uid)),
+      );
+      return snap.data().count;
+    } catch {
+      return 0;
+    }
+  },
+
   byOwner: async (uid, { pageSize = 50 } = {}) => {
     try {
       const q = query(

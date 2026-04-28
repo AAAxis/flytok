@@ -64,7 +64,6 @@ export default function Videos() {
                 <TableHead className="text-zinc-400">Author</TableHead>
                 <TableHead className="text-zinc-400">Uploaded</TableHead>
                 <TableHead className="text-zinc-400 text-right">Likes</TableHead>
-                <TableHead className="text-zinc-400 text-right">Comments</TableHead>
                 <TableHead className="text-zinc-400">Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -106,7 +105,6 @@ export default function Videos() {
                   </TableCell>
                   <TableCell className="text-zinc-400">{fmtDate(v.createdAt)}</TableCell>
                   <TableCell className="text-zinc-400 text-right">{fmtNum(Math.max(0, v.likeCount ?? 0))}</TableCell>
-                  <TableCell className="text-zinc-400 text-right">{fmtNum(v.commentCount)}</TableCell>
                   <TableCell>
                     <Badge variant={v.status === 'banned' ? 'destructive' : 'secondary'}>
                       {v.status ?? 'active'}

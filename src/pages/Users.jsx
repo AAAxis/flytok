@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Trash2, Plus } from 'lucide-react';
-import { usersRepo } from '@/lib/repositories';
+import { usersRepo, videosRepo } from '@/lib/repositories';
 import {
   Table,
   TableHeader,
@@ -116,8 +116,6 @@ export default function Users() {
                 <TableHead className="text-zinc-400">User</TableHead>
                 <TableHead className="text-zinc-400">Email</TableHead>
                 <TableHead className="text-zinc-400">Joined</TableHead>
-                <TableHead className="text-zinc-400 text-right">Videos</TableHead>
-                <TableHead className="text-zinc-400 text-right">Followers</TableHead>
                 <TableHead className="text-zinc-400">Role</TableHead>
                 <TableHead className="text-zinc-400 text-right"></TableHead>
               </TableRow>
@@ -145,8 +143,6 @@ export default function Users() {
                   </TableCell>
                   <TableCell className="text-zinc-100">{u.email ?? '—'}</TableCell>
                   <TableCell className="text-zinc-400">{fmtDate(u.createdAt)}</TableCell>
-                  <TableCell className="text-zinc-400 text-right">{u.videoCount ?? 0}</TableCell>
-                  <TableCell className="text-zinc-400 text-right">{u.followerCount ?? 0}</TableCell>
                   <TableCell>
                     <Badge variant={u.role === 'admin' ? 'default' : 'secondary'}>
                       {u.role ?? 'user'}
@@ -303,6 +299,24 @@ function Field({ label, required, children }) {
       {children}
     </div>
   );
+}
+
+function UserVideoCount({ uid, fallback }) {
+  const { data } = useQuery({
+    queryKey: ['users', uid, 'videoCount'],
+    queryFn: () => videosRepo.countByOwner(uid),
+    staleTime: 60_000,
+  });
+  return data ?? fallback ?? 0;
+}
+
+function UserFollowerCount({ uid, fallback }) {
+  const { data } = useQuery({
+    queryKey: ['users', uid, 'followerCount'],
+    queryFn: () => usersRepo.countFollowers(uid),
+    staleTime: 60_000,
+  });
+  return data ?? fallback ?? 0;
 }
 
 function EmptyState({ message }) {

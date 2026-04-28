@@ -80,6 +80,28 @@ export const usersRepo = {
   // removed via the Admin SDK on a backend.
   delete: (id) => deleteDoc(doc(firestore, 'users', id)),
 
+  countFollowers: async (uid) => {
+    try {
+      const snap = await getCountFromServer(
+        collection(firestore, 'users', uid, 'followers'),
+      );
+      return snap.data().count;
+    } catch {
+      return 0;
+    }
+  },
+
+  countFollowing: async (uid) => {
+    try {
+      const snap = await getCountFromServer(
+        collection(firestore, 'users', uid, 'following'),
+      );
+      return snap.data().count;
+    } catch {
+      return 0;
+    }
+  },
+
   followingOf: async (uid, { pageSize = 100 } = {}) => {
     const snap = await getDocs(
       query(collection(firestore, 'users', uid, 'following'), limit(pageSize)),

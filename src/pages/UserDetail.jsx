@@ -114,11 +114,8 @@ export default function UserDetail() {
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-4 gap-3 mb-6 text-sm">
+      <div className="mb-6 text-sm">
         <Detail label="Joined" value={fmtDate(user.createdAt)} />
-        <Detail label="Last seen" value={fmtDate(user.lastSeenAt)} />
-        <Detail label="Videos" value={user.videoCount ?? '—'} />
-        <Detail label="Followers" value={user.followerCount ?? '—'} />
       </div>
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
