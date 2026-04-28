@@ -96,6 +96,12 @@
         {
           "locationWhenInUsePermission": "Flytok uses your location to show nearby places on the map."
         }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "Flytok uses this to deliver more relevant content and measure ads. Your data is not shared with third parties for advertising."
+        }
       ]
     ],
     "experiments": {

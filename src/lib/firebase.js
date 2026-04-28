@@ -2,6 +2,11 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, initializeAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import {
+  getAnalytics,
+  isSupported as analyticsSupported,
+  logEvent as fbLogEvent,
+} from 'firebase/analytics';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyCvwnvDF64HbnfhAQmLDT7R6bK_caEUpv0',
@@ -35,3 +40,23 @@ export const secondaryAuth =
 // Reference getApp so the import isn't dead — keeps tooling happy if firebase
 // later drops re-exports we don't directly call.
 void getApp;
+
+// Firebase Analytics (web). Lazy-init because not all environments support it
+// (e.g. SSR, in-app browsers without IndexedDB). Use `track(name, params?)`.
+let analyticsPromise = null;
+function getAnalyticsInstance() {
+  if (analyticsPromise) return analyticsPromise;
+  analyticsPromise = analyticsSupported()
+    .then((ok) => (ok ? getAnalytics(firebaseApp) : null))
+    .catch(() => null);
+  return analyticsPromise;
+}
+
+export async function track(eventName, params) {
+  try {
+    const a = await getAnalyticsInstance();
+    if (a) fbLogEvent(a, eventName, params);
+  } catch {
+    // analytics is best-effort; never let it crash the app
+  }
+}

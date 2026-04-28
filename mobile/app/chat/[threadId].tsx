@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useHeaderHeight } from '@react-navigation/elements';
 import {
   messagesCol,
   sendTextMessage,
@@ -28,6 +29,7 @@ export default function ChatThread() {
   const { threadId } = useLocalSearchParams<{ threadId: string }>();
   const router = useRouter();
   const me = auth().currentUser;
+  const headerHeight = useHeaderHeight();
   const [messages, setMessages] = useState<MessageDoc[]>([]);
   const [thread, setThread] = useState<ThreadDoc | null>(null);
   const [text, setText] = useState('');
@@ -100,7 +102,7 @@ export default function ChatThread() {
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.safe}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 96 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
       >
         <SafeAreaView style={styles.flex} edges={['bottom']}>
           <FlatList

@@ -1,9 +1,51 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, StyleSheet, View } from 'react-native';
+import {
+  getTrackingPermissionsAsync,
+  requestTrackingPermissionsAsync,
+} from 'expo-tracking-transparency';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { colors } from '@/lib/theme';
+
+function useTrackingPrompt() {
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+
+    let cancelled = false;
+
+    async function ask() {
+      try {
+        const current = await getTrackingPermissionsAsync();
+        if (cancelled || current.status !== 'undetermined') return;
+        await requestTrackingPermissionsAsync();
+      } catch {
+        // ATT prompt is best-effort; ignore failures
+      }
+    }
+
+    // iOS only shows the prompt while the app is active. Wait until the app
+    // is foregrounded before asking, in case the screen mounts during launch.
+    if (AppState.currentState === 'active') {
+      ask();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        sub.remove();
+        ask();
+      }
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, []);
+}
 
 function Spinner() {
   return (

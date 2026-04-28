@@ -92,10 +92,10 @@ export function EditProfileSheet({
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="fullScreen"
+      presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+      <View style={styles.screen}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.flex}
@@ -162,7 +162,7 @@ export function EditProfileSheet({
             <Text style={styles.counter}>{bio.length}/120</Text>
           </View>
         </KeyboardAvoidingView>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
