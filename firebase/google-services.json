@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "320506157076",
+    "project_id": "roamerz-b0056",
+    "storage_bucket": "roamerz-b0056.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320506157076:android:bcc069a82c03a050fc2f01",
+        "android_client_info": {
+          "package_name": "com.roamrez.flytok"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyChGOfq7LGx37wWGRKAqKKWgknLyFSN76k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

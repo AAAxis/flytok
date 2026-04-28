@@ -1,0 +1,122 @@
+import './App.css';
+import { Toaster } from '@/components/ui/toaster';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClientInstance } from '@/lib/query-client';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+} from 'react-router-dom';
+import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import Layout from '@/Layout';
+import Login from '@/pages/Login';
+import Dashboard from '@/pages/Dashboard';
+import Users from '@/pages/Users';
+import Videos from '@/pages/Videos';
+import Reports from '@/pages/Reports';
+import Analytics from '@/pages/Analytics';
+
+function Spinner() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-zinc-950">
+      <div className="w-8 h-8 border-2 border-zinc-700 border-t-sky-400 rounded-full animate-spin" />
+    </div>
+  );
+}
+
+function NotAuthorized() {
+  const { user, logout } = useAuth();
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-6">
+      <div className="max-w-sm text-center space-y-3">
+        <div className="text-zinc-100 text-lg font-medium">Not authorized</div>
+        <div className="text-zinc-400 text-sm">
+          {user?.email} is signed in but does not have admin access.
+        </div>
+        <button
+          onClick={logout}
+          className="text-sm text-sky-400 hover:text-sky-300 underline-offset-4 hover:underline"
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProtectedRoute({ children }) {
+  const { user, isAdmin, loading } = useAuth();
+  if (loading) return <Spinner />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!isAdmin) return <NotAuthorized />;
+  return <Layout>{children}</Layout>;
+}
+
+function AppRoutes() {
+  const { user, loading } = useAuth();
+  if (loading) return <Spinner />;
+
+  return (
+    <Routes>
+      <Route
+        path="/login"
+        element={user ? <Navigate to="/" replace /> : <Login />}
+      />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/users"
+        element={
+          <ProtectedRoute>
+            <Users />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/videos"
+        element={
+          <ProtectedRoute>
+            <Videos />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reports"
+        element={
+          <ProtectedRoute>
+            <Reports />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/analytics"
+        element={
+          <ProtectedRoute>
+            <Analytics />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClientInstance}>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </AuthProvider>
+      <Toaster />
+    </QueryClientProvider>
+  );
+}
