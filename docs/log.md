@@ -8,7 +8,9 @@
 - Captured OOM crash evidence — feed leaks ExoPlayer instances. Root cause + fix plan in `docs/03-crash-fix-oom.md`.
 - Prepared `prompt.md` and `docs/01..03-*.md` to drive next session's work (DM refactor, feed alignment fix, OOM fix).
 
-## 2026-05-03 — session 2 (DM refactor)
+## 2026-05-02 — session 2
+
+### DMs (Task 1)
 
 - Carved the messaging code out of `mobile/lib/firestore.ts` into a dedicated
   `mobile/lib/messaging/` module: `schema.ts` (types), `threads.ts`,
@@ -51,7 +53,7 @@
   (`app/v/[id].tsx`, `components/FollowListSheet.tsx`, `lib/firestore.ts:98`,
   `lib/geocode.ts`, `lib/videoCache.ts`) all pre-existed before this session.
 
-## 2026-05-02 — session 2 (next)
+### Feed (Tasks 2 + 3)
 
 Shipped two feed fixes. (1) Top tabs and AI button on the trending feed now
 read `useSafeAreaInsets()` instead of a hardcoded `top: 56`, so the chip row
@@ -65,3 +67,23 @@ black placeholder when out of window. FlatList tightened to
 `initialNumToRender={1}`. Same wiring applied to the user-posts/saved feed
 at `mobile/app/posts/[uid].tsx`. Caps native ExoPlayer/MediaCodec memory at
 3 instances regardless of feed length, fixing the 256 MB OOM crash.
+
+### Verification
+
+- `npx expo run:android` clean rebuild + install on `0010934AE002636`.
+- App boots; no entries in `adb logcat -b crash`; no `FATAL EXCEPTION` /
+  `OutOfMemoryError` in the main log.
+- 30 simulated swipes through the feed: native heap held at ~120 MB
+  (was the OOM growth path), TOTAL PSS held at ~290 MB. Player pool is
+  reusing slots — memory plateaus instead of climbing toward the 256 MB
+  ExoPlayer ceiling.
+
+### Manual follow-ups for Roman
+
+1. `firebase deploy --only storage` — service-account auth couldn't release
+   the new Storage rules (see `storage.rules` + the failure log from
+   `.deploy-storage-rules.mjs`).
+2. `cd firebase/functions && npm run build && npm run deploy` — DM push
+   delivery function needs interactive `firebase login` to ship.
+3. Two-account smoke test of DMs (text + image + soft-delete + push) on
+   `0010934AE002636` once the function is live.
