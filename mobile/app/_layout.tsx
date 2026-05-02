@@ -2,13 +2,20 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { ActivityIndicator, AppState, Platform, StyleSheet, View } from 'react-native';
+import messaging, {
+  FirebaseMessagingTypes,
+} from '@react-native-firebase/messaging';
 import {
   getTrackingPermissionsAsync,
   requestTrackingPermissionsAsync,
 } from 'expo-tracking-transparency';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { setUserProperty } from '@/lib/analytics';
+import { setupBackgroundMessageHandler } from '@/lib/messaging';
 import { colors } from '@/lib/theme';
+
+// Must be registered before any RemoteMessage can arrive.
+setupBackgroundMessageHandler();
 
 function useTrackingPrompt() {
   useEffect(() => {
@@ -61,10 +68,43 @@ function Spinner() {
   );
 }
 
+function useChatPushHandlers() {
+  const router = useRouter();
+
+  useEffect(() => {
+    function handleNotification(rm: FirebaseMessagingTypes.RemoteMessage | null) {
+      const threadId = rm?.data?.threadId;
+      if (typeof threadId === 'string' && threadId.length > 0) {
+        router.push(`/chat/${threadId}`);
+      }
+    }
+
+    // Cold-start tap: a notification opened the app from quit state.
+    messaging()
+      .getInitialNotification()
+      .then(handleNotification)
+      .catch(() => {});
+
+    // Background -> foreground tap.
+    const onOpened = messaging().onNotificationOpenedApp(handleNotification);
+
+    // Foreground arrival — Firebase doesn't display a banner automatically on
+    // Android, but for chat we already render the active thread so doing
+    // nothing is fine. Hook in case we want a toast later.
+    const onMessage = messaging().onMessage(() => {});
+
+    return () => {
+      onOpened();
+      onMessage();
+    };
+  }, [router]);
+}
+
 function Gate() {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  useChatPushHandlers();
 
   useEffect(() => {
     if (loading) return;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import {
   ActivityIndicator,
@@ -15,12 +15,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
   ensureThread,
-  getUserLabel,
-  threadsCol,
-  usersCol,
+  useThreadList,
   type ThreadDoc,
-} from '@/lib/firestore';
+} from '@/lib/messaging';
+import { getBlockedIds, getUserLabel, usersCol } from '@/lib/firestore';
 import { ensureNotificationPermission } from '@/lib/notifications';
+import { ThreadRow } from '@/components/messaging/ThreadRow';
 import { colors } from '@/lib/theme';
 
 type UserDoc = { uid: string; email: string | null; displayName: string | null };
@@ -28,45 +28,41 @@ type UserDoc = { uid: string; email: string | null; displayName: string | null }
 export default function Inbox() {
   const me = auth().currentUser;
   const router = useRouter();
-  const [threads, setThreads] = useState<ThreadDoc[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { threads, loading } = useThreadList();
   const [showNew, setShowNew] = useState(false);
+  const [blocked, setBlocked] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     ensureNotificationPermission();
   }, []);
 
   useEffect(() => {
-    if (!me) return;
-    const unsub = threadsCol()
-      .where('participants', 'array-contains', me.uid)
-      .onSnapshot(
-        (snap) => {
-          const items = snap.docs
-            .map((d) => ({ id: d.id, ...(d.data() as Omit<ThreadDoc, 'id'>) }))
-            .sort((a, b) => {
-              const ta = a.lastMessageAt?.toMillis?.() ?? 0;
-              const tb = b.lastMessageAt?.toMillis?.() ?? 0;
-              return tb - ta;
-            });
-          setThreads(items);
-          setLoading(false);
-        },
-        () => {
-          setThreads([]);
-          setLoading(false);
-        },
-      );
-    return unsub;
-  }, [me]);
+    let cancelled = false;
+    getBlockedIds()
+      .then((set) => {
+        if (!cancelled) setBlocked(set);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredThreads = useMemo(() => {
+    if (!me) return [];
+    if (blocked.size === 0) return threads;
+    return threads.filter((t) => {
+      const otherUid = t.participants.find((p) => p !== me.uid);
+      return otherUid ? !blocked.has(otherUid) : true;
+    });
+  }, [threads, blocked, me]);
 
   const [labels, setLabels] = useState<Record<string, string>>({});
-
   useEffect(() => {
     if (!me) return;
     const otherUids = Array.from(
       new Set(
-        threads
+        filteredThreads
           .map((t) => t.participants.find((p) => p !== me.uid))
           .filter((u): u is string => Boolean(u)),
       ),
@@ -81,9 +77,9 @@ export default function Inbox() {
         return next;
       });
     });
-  }, [threads, me]);
+  }, [filteredThreads, me]);
 
-  function otherLabel(t: ThreadDoc) {
+  function otherLabel(t: ThreadDoc): string {
     if (!me) return '';
     const otherUid = t.participants.find((p) => p !== me.uid);
     if (!otherUid) return '';
@@ -105,41 +101,45 @@ export default function Inbox() {
         </View>
       ) : (
         <FlatList
-          data={threads}
+          data={filteredThreads}
           keyExtractor={(t) => t.id}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() => router.push(`/chat/${item.id}`)}
-              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-            >
-              <View style={styles.avatar}>
-                <Ionicons name="person" size={20} color={colors.text} />
-              </View>
-              <View style={styles.rowText}>
-                <Text style={styles.name}>{otherLabel(item)}</Text>
-                {item.lastMessage ? (
-                  <Text style={styles.preview} numberOfLines={1}>
-                    {item.lastMessage}
-                  </Text>
-                ) : (
-                  <Text style={styles.previewDim}>No messages yet</Text>
-                )}
-              </View>
-            </Pressable>
-          )}
+          renderItem={({ item }) =>
+            me ? (
+              <ThreadRow
+                thread={item}
+                myUid={me.uid}
+                otherLabel={otherLabel(item)}
+                onPress={() => router.push(`/chat/${item.id}`)}
+              />
+            ) : null
+          }
           ListEmptyComponent={
-            <Text style={styles.empty}>No conversations yet. Tap the pencil to start one.</Text>
+            <Text style={styles.empty}>
+              No conversations yet. Tap the pencil to start one.
+            </Text>
           }
         />
       )}
 
-      <NewChatModal visible={showNew} onClose={() => setShowNew(false)} />
+      <NewChatModal
+        visible={showNew}
+        blocked={blocked}
+        onClose={() => setShowNew(false)}
+      />
     </SafeAreaView>
   );
 }
 
-function NewChatModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+function NewChatModal({
+  visible,
+  blocked,
+  onClose,
+}: {
+  visible: boolean;
+  blocked: Set<string>;
+  onClose: () => void;
+}) {
   const me = auth().currentUser;
   const router = useRouter();
   const [users, setUsers] = useState<UserDoc[]>([]);
@@ -162,16 +162,16 @@ function NewChatModal({ visible, onClose }: { visible: boolean; onClose: () => v
                 displayName: (data.displayName as string | null) ?? null,
               };
             })
-            .filter((u) => u.uid !== me?.uid),
+            .filter((u) => u.uid !== me?.uid && !blocked.has(u.uid)),
         );
       })
       .catch(() => setUsers([]));
-  }, [visible, me]);
+  }, [visible, me, blocked]);
 
   async function open(u: UserDoc) {
     setBusy(u.uid);
     try {
-      const id = await ensureThread(u.uid, u.email);
+      const id = await ensureThread(u.uid);
       onClose();
       router.push(`/chat/${id}`);
     } finally {
@@ -263,8 +263,6 @@ const styles = StyleSheet.create({
   },
   rowText: { flex: 1 },
   name: { color: colors.text, fontSize: 14, fontWeight: '500' },
-  preview: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  previewDim: { color: colors.textFaint, fontSize: 12, marginTop: 2 },
   empty: { color: colors.textDim, fontSize: 13, textAlign: 'center', padding: 24 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: {

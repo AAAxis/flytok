@@ -11,14 +11,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { getUserLabel, type VideoDoc } from '@/lib/firestore';
 import {
   ensureThread,
-  getUserLabel,
+  listMyThreads,
   sendVideoCard,
-  threadsCol,
   type ThreadDoc,
-  type VideoDoc,
-} from '@/lib/firestore';
+} from '@/lib/messaging';
 import { colors } from '@/lib/theme';
 
 export function ShareToChatSheet({
@@ -38,16 +37,10 @@ export function ShareToChatSheet({
 
   useEffect(() => {
     if (!visible || !me) return;
-    const unsub = threadsCol()
-      .where('participants', 'array-contains', me.uid)
-      .onSnapshot(
-        (snap) => {
-          setThreads(
-            snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ThreadDoc, 'id'>) })),
-          );
-        },
-        () => setThreads([]),
-      );
+    const unsub = listMyThreads(
+      (items) => setThreads(items),
+      () => setThreads([]),
+    );
     return unsub;
   }, [visible, me]);
 
@@ -66,7 +59,7 @@ export function ShareToChatSheet({
     if (!me || video.ownerId === me.uid) return;
     setBusy(video.ownerId);
     try {
-      const id = await ensureThread(video.ownerId, video.ownerEmail ?? null);
+      const id = await ensureThread(video.ownerId);
       await sendVideoCard(id, video);
       onSent?.();
       onClose();

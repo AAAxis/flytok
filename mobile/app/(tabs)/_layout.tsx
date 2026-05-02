@@ -1,10 +1,12 @@
 import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, View, StyleSheet } from 'react-native';
+import { useUnreadBadge } from '@/lib/messaging';
 import { colors } from '@/lib/theme';
 
 export default function TabsLayout() {
   const router = useRouter();
+  const unread = useUnreadBadge();
   return (
     <Tabs
       screenOptions={{
@@ -57,6 +59,7 @@ export default function TabsLayout() {
         options={{
           title: 'Inbox',
           tabBarIcon: ({ color, size }) => <Ionicons name="chatbubble" size={size} color={color} />,
+          tabBarBadge: unread > 0 ? unread : undefined,
         }}
       />
       <Tabs.Screen
