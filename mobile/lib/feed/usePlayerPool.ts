@@ -127,14 +127,24 @@ export function usePlayerPool(items: FeedPoolItem[], activeIndex: number): Playe
       desiredAssignments.push({ index: i, slot: free, item });
     }
 
-    // Apply: replace source on slots whose binding changes, pause anything
-    // we're evicting so it doesn't keep decoding offscreen.
+    // Apply: replace source on slots whose binding changes, drop the source
+    // entirely on anything we're evicting so it stops accumulating ExoPlayer
+    // load buffers (was the OOM culprit — `pause()` alone keeps the
+    // LoadControl filling its buffer in the background).
     for (const slot of slots) {
       if (!assignedSlots.has(slot) && slot.videoId !== null) {
         try {
           slot.player.pause();
         } catch {
           // player may be in an error state — ignore, replace will reset
+        }
+        try {
+          // `replace(null)` releases the underlying MediaSource and stops the
+          // LoadControl buffer pump. Without this, evicted slots silently
+          // continue downloading until the heap is exhausted.
+          slot.player.replace(null, true);
+        } catch {
+          // already released or transitioning — next rotation will retry
         }
         slot.videoId = null;
         slot.uri = null;
@@ -189,6 +199,26 @@ function mapsEqual(
 function configure(p: VideoPlayer) {
   p.loop = true;
   p.muted = false;
+  // Cap how far ahead each player buffers. The expo-video / ExoPlayer default
+  // is 20 s of forward buffer with no byte cap, which on HD video can pin
+  // 30–80 MB of Java heap *per active player*. With three players that alone
+  // exceeds the 256 MB heap target. We bound both axes: 4 s of forward video
+  // and a hard 8 MB ceiling per player → ~24 MB max across the pool.
+  //
+  // `prioritizeTimeOverSizeThreshold = false` means the byte cap wins when
+  // they conflict, which is the safer choice for memory-bound feeds.
+  // `minBufferForPlayback = 1` lets playback resume after a 1 s rebuffer
+  // instead of waiting for a full forward window.
+  try {
+    p.bufferOptions = {
+      preferredForwardBufferDuration: 4,
+      minBufferForPlayback: 1,
+      maxBufferBytes: 8 * 1024 * 1024,
+      prioritizeTimeOverSizeThreshold: false,
+    };
+  } catch {
+    // Older expo-video without bufferOptions — defaults will apply.
+  }
 }
 
 /** Returns [active-1, active, active+1] clamped to valid indices. */
