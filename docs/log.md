@@ -78,6 +78,63 @@ at `mobile/app/posts/[uid].tsx`. Caps native ExoPlayer/MediaCodec memory at
   reusing slots — memory plateaus instead of climbing toward the 256 MB
   ExoPlayer ceiling.
 
+### OOM round 2 — buffers + listeners + largeHeap
+
+The session-1 player pool capped how many ExoPlayer instances exist at
+once, but it did not cap how much data each one buffers. ExoPlayer's
+default `LoadControl` keeps pumping ~20 s of forward video into Java
+heap with no byte cap; on HD content that's 30–80 MB per player, so
+three players easily blew the 256 MB Java heap target the next time a
+fresh build was tested. The crash now landed in
+`ExoPlayerImplInternal.shouldContinueLoading` (heap-full while the
+LoadControl tries to allocate more buffer), with downstream FATALs in
+OkHttp, Firestore, and Crashlytics threads — all symptoms of a full
+heap rather than separate bugs. Confirmed via the AndroidRuntime
+`target footprint 268435456 bytes` (256 MB) ceiling.
+
+Three concrete fixes shipped:
+
+1. **Buffer caps in `usePlayerPool.ts`** — set `bufferOptions` on each
+   pooled player: 4 s forward, 1 s playback threshold, 8 MB byte cap,
+   size-over-time priority. Pool ceiling now ~24 MB across the three
+   slots regardless of bitrate.
+2. **Free source on slot eviction** — when a slot rotates out of the
+   `[active-1, active+1]` window we now call `replace(null, true)` so
+   ExoPlayer drops the MediaSource and stops the LoadControl pump.
+   Previously we only `pause()`-d, so evicted slots silently kept
+   downloading.
+3. **Per-card listener gating in `FeedItem.tsx`** — the four
+   `onSnapshot` listeners (comments / following / saves / likes) now
+   only register on the active card. With `pagingEnabled` FlatList that
+   alone removed ~12+ HTTP/2 streams from the steady-state.
+
+Defense-in-depth: **`android:largeHeap="true"`** via a new
+`mobile/plugins/withAndroidLargeHeap.js` config plugin. The device
+default `dalvik.vm.heapgrowthlimit` was 256 MB; with `largeHeap` the
+app now gets `dalvik.vm.heapsize=512 MB`. This is the standard prod
+flag for video feed apps, applied on top of the leak fixes — not as
+a substitute.
+
+### Verification (2026-05-02 evening, device `0010934AE002636`)
+
+Cold `./gradlew clean && expo run:android` after `expo prebuild` to
+regenerate the manifest with `largeHeap`. App boots, three ExoPlayer
+instances logged (`AndroidXMedia3/1.8.0`), feed loads, video plays.
+
+90 simulated swipes (60 at 1 s cadence + 30 at 0.5 s cadence):
+
+- PID held at 30766 throughout — no crash, no restart.
+- `adb logcat -d -b crash` empty.
+- `adb logcat -d | grep -iE "FATAL EXCEPTION|OutOfMemoryError"` empty.
+- `dumpsys meminfo` Java Heap: 54 MB pre-scroll → **31 MB** post-scroll
+  (GC reclaimed buffers as expected). Well under the 256 MB ceiling
+  that previously OOM-ed, and well under the new 512 MB largeHeap cap.
+- Native Heap stable at 144–191 MB; Graphics steady at 191 MB (decoder
+  buffers reused across pool rotations); TOTAL PSS 550–601 MB.
+
+Memory is going *down* during scroll, not up — the steady-state is
+bounded by the pool size and the 8 MB-per-slot buffer cap.
+
 ### Manual follow-ups for Roman
 
 1. `firebase deploy --only storage` — service-account auth couldn't release
