@@ -3,11 +3,10 @@ import auth from '@react-native-firebase/auth';
 import { Alert, Dimensions, Image, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { VideoView, useVideoPlayer } from 'expo-video';
+import { VideoView, type VideoPlayer } from 'expo-video';
 import { commentsCol, deleteOwnVideo, follow, followingCol, likesCol, savesCol, toggleLike, toggleSave, unfollow, type VideoDoc } from '@/lib/firestore';
 import { useUserLabel, useUserProfile } from '@/lib/useUserLabel';
 import { useAuth } from '@/lib/AuthContext';
-import { useCachedVideoUri } from '@/lib/videoCache';
 import { CommentsSheet } from '@/components/CommentsSheet';
 import { ShareToChatSheet } from '@/components/ShareToChatSheet';
 import { ReportSheet } from '@/components/ReportSheet';
@@ -20,11 +19,18 @@ export function FeedItem({
   item,
   active,
   height,
+  player,
   onBlocked,
 }: {
   item: VideoDoc;
   active: boolean;
   height: number;
+  /**
+   * Player provided by the parent feed's `usePlayerPool`. Null when this item
+   * is outside the active ±1 window — in that case we render a static poster
+   * to avoid mounting a heavy ExoPlayer per card (was the OOM root cause).
+   */
+  player: VideoPlayer | null;
   onBlocked?: (uid: string) => void;
 }) {
   const me = auth().currentUser;
@@ -44,6 +50,7 @@ export function FeedItem({
   const wasPlayingRef = useRef(false);
 
   function seekToFraction(fraction: number) {
+    if (!player) return;
     const f = Math.min(1, Math.max(0, fraction));
     const dur = player.duration ?? 0;
     if (dur > 0) {
@@ -52,13 +59,8 @@ export function FeedItem({
     }
   }
 
-  const cachedUri = useCachedVideoUri(item.downloadURL);
-  const player = useVideoPlayer(cachedUri ?? item.downloadURL, (p) => {
-    p.loop = true;
-    p.muted = false;
-  });
-
   useEffect(() => {
+    if (!player) return;
     if (active) player.play();
     else player.pause();
   }, [active, player]);
@@ -67,7 +69,7 @@ export function FeedItem({
   // Pauses while the user is scrubbing so the polled value doesn't fight the
   // dragged thumb.
   useEffect(() => {
-    if (!active) return;
+    if (!active || !player) return;
     const id = setInterval(() => {
       if (scrubbing) return;
       try {
@@ -172,11 +174,13 @@ export function FeedItem({
     <View style={[styles.item, { height }]}>
       <Pressable
         onPress={() => {
+          if (!player) return;
           // Single tap toggles play/pause.
           if (player.playing) player.pause();
           else player.play();
         }}
         onLongPress={() => {
+          if (!player) return;
           // Press-and-hold pauses while held, resumes on release.
           player.pause();
           setHolding(true);
@@ -184,12 +188,25 @@ export function FeedItem({
         onPressOut={() => {
           if (!holding) return;
           setHolding(false);
-          if (active) player.play();
+          if (active && player) player.play();
         }}
         delayLongPress={220}
         style={styles.fill}
       >
-        <VideoView player={player} style={[styles.video, { height }]} contentFit="cover" nativeControls={false} />
+        {player ? (
+          <VideoView
+            player={player}
+            style={[styles.video, { height }]}
+            contentFit="cover"
+            nativeControls={false}
+          />
+        ) : (
+          // Out of the active ±1 window: render a black placeholder. We
+          // intentionally avoid spawning a thumbnail player here — that was
+          // the OOM root cause. The card swaps in a real player as soon as
+          // the user scrolls within range.
+          <View style={[styles.video, styles.posterFallback, { height }]} />
+        )}
       </Pressable>
       {holding && (
         <View style={styles.holdIndicator} pointerEvents="none">
@@ -202,9 +219,10 @@ export function FeedItem({
         onLayout={(e) => {
           trackWidthRef.current = e.nativeEvent.layout.width;
         }}
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
+        onStartShouldSetResponder={() => !!player}
+        onMoveShouldSetResponder={() => !!player}
         onResponderGrant={(e) => {
+          if (!player) return;
           wasPlayingRef.current = !!player.playing;
           player.pause();
           setScrubbing(true);
@@ -213,17 +231,18 @@ export function FeedItem({
           }
         }}
         onResponderMove={(e) => {
+          if (!player) return;
           if (trackWidthRef.current > 0) {
             seekToFraction(e.nativeEvent.locationX / trackWidthRef.current);
           }
         }}
         onResponderRelease={() => {
           setScrubbing(false);
-          if (active && wasPlayingRef.current) player.play();
+          if (active && player && wasPlayingRef.current) player.play();
         }}
         onResponderTerminate={() => {
           setScrubbing(false);
-          if (active && wasPlayingRef.current) player.play();
+          if (active && player && wasPlayingRef.current) player.play();
         }}
       >
         <View style={[styles.progressTrack, scrubbing && styles.progressTrackActive]}>
@@ -390,6 +409,7 @@ const styles = StyleSheet.create({
   item: { width, backgroundColor: '#000' },
   fill: { ...StyleSheet.absoluteFillObject },
   video: { width },
+  posterFallback: { backgroundColor: '#000' },
   holdIndicator: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',

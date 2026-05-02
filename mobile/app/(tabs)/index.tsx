@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import {
   ActivityIndicator,
@@ -22,7 +22,8 @@ import {
 } from '@/lib/firestore';
 import { FeedItem } from '@/components/FeedItem';
 import { AiAssistantSheet } from '@/components/AiAssistantSheet';
-import { prefetchVideos } from '@/lib/videoCache';
+import { getCachedVideoPath, prefetchVideos } from '@/lib/videoCache';
+import { usePlayerPool, type FeedPoolItem } from '@/lib/feed/usePlayerPool';
 import { colors } from '@/lib/theme';
 
 /** Gap below the status bar / camera cutout for the top overlay row. */
@@ -133,6 +134,48 @@ export default function Feed() {
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
 
+  // Map<videoId, file://...> — resolved lazily when an item enters the active
+  // window so the player loads from local cache instead of re-streaming.
+  const [cachedUriById, setCachedUriById] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    const start = Math.max(0, activeIndex - 1);
+    const end = Math.min(videos.length, activeIndex + 2);
+    for (let i = start; i < end; i += 1) {
+      const v = videos[i];
+      if (!v?.downloadURL || cachedUriById[v.id]) continue;
+      getCachedVideoPath(v.downloadURL)
+        .then((path) => {
+          if (cancelled || !path) return;
+          setCachedUriById((prev) =>
+            prev[v.id] === path ? prev : { ...prev, [v.id]: path },
+          );
+        })
+        .catch(() => {
+          // best-effort — fall back to remote URL
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [videos, activeIndex, cachedUriById]);
+
+  // Build the pool item list. Stable identity per video; the pool only
+  // re-runs its rotation effect when this array changes (e.g. tab/refresh)
+  // or when activeIndex shifts.
+  const poolItems = useMemo<FeedPoolItem[]>(
+    () =>
+      videos
+        .map((v) => {
+          const uri = cachedUriById[v.id] ?? v.downloadURL;
+          return uri ? { id: v.id, uri } : null;
+        })
+        .filter((x): x is FeedPoolItem => x != null),
+    [videos, cachedUriById],
+  );
+
+  const pool = usePlayerPool(poolItems, activeIndex);
+
   return (
     <View style={styles.root} onLayout={onContainerLayout}>
       {loading ? (
@@ -159,6 +202,7 @@ export default function Feed() {
               item={item}
               active={index === activeIndex}
               height={viewportHeight}
+              player={pool.getPlayerForIndex(index)}
               onBlocked={handleBlocked}
             />
           )}
@@ -173,6 +217,13 @@ export default function Feed() {
           showsVerticalScrollIndicator={false}
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}
+          // Tighten React mount footprint: only the active card and its
+          // immediate neighbours stay rendered. Combined with the player pool
+          // this caps native memory regardless of feed length.
+          windowSize={3}
+          removeClippedSubviews
+          maxToRenderPerBatch={2}
+          initialNumToRender={1}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

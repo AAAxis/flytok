@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -12,6 +12,8 @@ import {
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { getMyVideos, getSavedVideoIds, getVideosByIds, type VideoDoc } from '@/lib/firestore';
 import { FeedItem } from '@/components/FeedItem';
+import { usePlayerPool, type FeedPoolItem } from '@/lib/feed/usePlayerPool';
+import { getCachedVideoPath } from '@/lib/videoCache';
 import { colors } from '@/lib/theme';
 
 const FALLBACK_HEIGHT = Dimensions.get('window').height;
@@ -78,6 +80,45 @@ export default function UserPostsFeed() {
     if (h > 0 && h !== viewportHeight) setViewportHeight(h);
   }
 
+  // Mirror the trending feed's player virtualization: hold one player per
+  // active-window slot (3 max) so this screen also caps native memory.
+  const [cachedUriById, setCachedUriById] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    const start = Math.max(0, activeIndex - 1);
+    const end = Math.min(videos.length, activeIndex + 2);
+    for (let i = start; i < end; i += 1) {
+      const v = videos[i];
+      if (!v?.downloadURL || cachedUriById[v.id]) continue;
+      getCachedVideoPath(v.downloadURL)
+        .then((path) => {
+          if (cancelled || !path) return;
+          setCachedUriById((prev) =>
+            prev[v.id] === path ? prev : { ...prev, [v.id]: path },
+          );
+        })
+        .catch(() => {
+          // best-effort
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [videos, activeIndex, cachedUriById]);
+
+  const poolItems = useMemo<FeedPoolItem[]>(
+    () =>
+      videos
+        .map((v) => {
+          const uri = cachedUriById[v.id] ?? v.downloadURL;
+          return uri ? { id: v.id, uri } : null;
+        })
+        .filter((x): x is FeedPoolItem => x != null),
+    [videos, cachedUriById],
+  );
+
+  const pool = usePlayerPool(poolItems, activeIndex);
+
   return (
     <View style={styles.root} onLayout={onContainerLayout}>
       <Stack.Screen
@@ -110,6 +151,7 @@ export default function UserPostsFeed() {
               item={item}
               active={index === activeIndex}
               height={viewportHeight}
+              player={pool.getPlayerForIndex(index)}
             />
           )}
           pagingEnabled
@@ -123,6 +165,10 @@ export default function UserPostsFeed() {
             offset: viewportHeight * i,
             index: i,
           })}
+          windowSize={3}
+          removeClippedSubviews
+          maxToRenderPerBatch={2}
+          initialNumToRender={1}
           initialScrollIndex={
             start
               ? Math.max(
