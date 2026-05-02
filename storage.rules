@@ -1,0 +1,47 @@
+rules_version = '2';
+
+// Storage rules for Roamrez/Flytok (project: roamerz-b0056).
+// Reflects the chat image-attachment design from `docs/01-dm-implementation.md`.
+// Deployed via `.deploy-storage-rules.mjs` (service-account-auth REST call).
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // === chat/{threadId}/{uid}/{file} ===
+    // Image attachments inside a 1:1 thread. The participant check
+    // currently lives in Firestore rules (the message create path) — these
+    // Storage rules permit any signed-in user to read, but only the uploading
+    // author may write. A future Cloud Function tightens reads to thread
+    // participants if needed.
+    match /chat/{threadId}/{uid}/{file=**} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.auth.uid == uid
+                   && request.resource.size < 8 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // === videos/{uid}/... ===
+    // Existing video upload path — caller must own the folder, capped at 200 MB.
+    match /videos/{uid}/{file=**} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.auth.uid == uid
+                   && request.resource.size < 200 * 1024 * 1024
+                   && request.resource.contentType.matches('video/.*');
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // === avatars/{uid}/... ===
+    // Profile photos — owner-only writes, public reads.
+    match /avatars/{uid}/{file=**} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.auth.uid == uid
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // Default deny — anything not matched above is forbidden.
+  }
+}
