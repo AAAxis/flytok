@@ -83,14 +83,23 @@ export function FeedItem({
     return () => clearInterval(id);
   }, [active, player, scrubbing]);
 
+  // Per-card Firestore listeners. We gate every subscription on `active` so
+  // off-screen cards don't each hold open four onSnapshot streams. With a 50
+  // -item feed that was 200 long-lived listeners → ~50–100 KB heap each in
+  // OkHttp/HTTP2 buffers + Firestore SDK state, which contributed to the OOM
+  // alongside the ExoPlayer LoadControl pumps. Listeners attach within a few
+  // hundred ms of the card becoming active, which is fine for counters and
+  // toggles users only see on the foreground card.
   useEffect(() => {
+    if (!active) return;
     return commentsCol(item.id).onSnapshot(
       (snap) => setCommentCount(snap.size),
       () => setCommentCount(0),
     );
-  }, [item.id]);
+  }, [active, item.id]);
 
   useEffect(() => {
+    if (!active) return;
     if (!me || me.uid === item.ownerId) return;
     return followingCol(me.uid)
       .doc(item.ownerId)
@@ -98,9 +107,10 @@ export function FeedItem({
         (snap) => setFollowing(snap.exists),
         () => setFollowing(false),
       );
-  }, [me, item.ownerId]);
+  }, [active, me, item.ownerId]);
 
   useEffect(() => {
+    if (!active) return;
     if (!me) return;
     return savesCol(me.uid)
       .doc(item.id)
@@ -108,9 +118,10 @@ export function FeedItem({
         (snap) => setSaved(!!snap.data()),
         () => setSaved(false),
       );
-  }, [me, item.id]);
+  }, [active, me, item.id]);
 
   useEffect(() => {
+    if (!active) return;
     if (!me) return;
     return likesCol(item.id)
       .doc(me.uid)
@@ -118,7 +129,7 @@ export function FeedItem({
         (snap) => setLiked(!!snap.data()),
         () => setLiked(false),
       );
-  }, [me, item.id]);
+  }, [active, me, item.id]);
 
   async function handleSave() {
     console.log('[save] tapped', { videoId: item.id, signedIn: !!me, saved });
