@@ -12,6 +12,7 @@ import {
   View,
   ViewToken,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
   followingCol,
@@ -24,6 +25,9 @@ import { AiAssistantSheet } from '@/components/AiAssistantSheet';
 import { prefetchVideos } from '@/lib/videoCache';
 import { colors } from '@/lib/theme';
 
+/** Gap below the status bar / camera cutout for the top overlay row. */
+const TOP_OVERLAY_GAP = 8;
+
 const FALLBACK_HEIGHT = Dimensions.get('window').height;
 
 type FeedTab = 'trending' | 'following';
@@ -35,6 +39,7 @@ const TABS: { id: FeedTab; label: string; icon: React.ComponentProps<typeof Ioni
 
 export default function Feed() {
   const me = auth().currentUser;
+  const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<FeedTab>('trending');
   const [showAi, setShowAi] = useState(false);
   const [videos, setVideos] = useState<VideoDoc[]>([]);
@@ -42,6 +47,9 @@ export default function Feed() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(FALLBACK_HEIGHT);
+  // Top overlays must clear the status bar / camera cutout on Android
+  // edge-to-edge devices and the notch on iOS.
+  const topOverlayOffset = insets.top + TOP_OVERLAY_GAP;
 
   function onContainerLayout(e: LayoutChangeEvent) {
     const h = e.nativeEvent.layout.height;
@@ -176,7 +184,7 @@ export default function Feed() {
         />
       )}
 
-      <View style={styles.topTabs} pointerEvents="box-none">
+      <View style={[styles.topTabs, { top: topOverlayOffset }]} pointerEvents="box-none">
         {TABS.map((t) => {
           const active = tab === t.id;
           return (
@@ -203,7 +211,7 @@ export default function Feed() {
       <Pressable
         onPress={() => setShowAi(true)}
         hitSlop={8}
-        style={styles.aiButton}
+        style={[styles.aiButton, { top: topOverlayOffset }]}
         accessibilityLabel="Open travel assistant"
       >
         <Ionicons name="sparkles" size={18} color="#fff" />
@@ -228,7 +236,6 @@ const styles = StyleSheet.create({
   emptyHint: { color: colors.textMuted, fontSize: 13, textAlign: 'center' },
   topTabs: {
     position: 'absolute',
-    top: 56,
     left: 0,
     right: 0,
     flexDirection: 'row',
@@ -256,7 +263,6 @@ const styles = StyleSheet.create({
   },
   aiButton: {
     position: 'absolute',
-    top: 56,
     right: 16,
     width: 36,
     height: 36,
