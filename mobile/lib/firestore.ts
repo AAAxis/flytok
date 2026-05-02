@@ -56,29 +56,20 @@ export type CommentDoc = {
   createdAt?: FirebaseFirestoreTypes.Timestamp;
 };
 
-export type ThreadDoc = {
-  id: string;
-  participants: string[];
-  participantEmails: Record<string, string | null>;
-  lastMessage?: string;
-  lastMessageAt?: FirebaseFirestoreTypes.Timestamp;
-};
-
-export type MessageDoc = {
-  id: string;
-  authorId: string;
-  type: 'text' | 'video_card';
-  text?: string;
-  videoId?: string;
-  videoCaption?: string;
-  videoOwnerEmail?: string | null;
-  videoDownloadURL?: string;
-  createdAt?: FirebaseFirestoreTypes.Timestamp;
-};
+// Messaging types now live in `lib/messaging/schema.ts`. Re-exported below for
+// existing callers; new code should import from `@/lib/messaging` directly.
+export type { ThreadDoc, MessageDoc } from './messaging/schema';
+export {
+  threadsCol,
+  threadIdFor,
+  ensureThread,
+  messagesCol,
+} from './messaging';
+// Backwards-compat shim — the old `sendTextMessage` is now `sendText`.
+export { sendText as sendTextMessage, sendVideoCard } from './messaging';
 
 export const videosCol = () => firestore().collection('videos');
 export const usersCol = () => firestore().collection('users');
-export const threadsCol = () => firestore().collection('threads');
 export const reportsCol = () => firestore().collection('reports');
 
 export function blockedCol(uid: string) {
@@ -332,10 +323,6 @@ export function commentsCol(videoId: string) {
   return videosCol().doc(videoId).collection('comments');
 }
 
-export function messagesCol(threadId: string) {
-  return threadsCol().doc(threadId).collection('messages');
-}
-
 export function followingCol(uid: string) {
   return usersCol().doc(uid).collection('following');
 }
@@ -357,10 +344,6 @@ export async function getFollowCounts(uid: string): Promise<{ following: number;
   } catch {
     return { following: 0, followers: 0 };
   }
-}
-
-export function threadIdFor(uidA: string, uidB: string) {
-  return [uidA, uidB].sort().join('_');
 }
 
 function requireUser() {
@@ -512,63 +495,3 @@ export async function uploadProfilePhoto(uri: string): Promise<string> {
   return downloadURL;
 }
 
-export async function ensureThread(otherUid: string, otherEmail: string | null) {
-  const user = requireUser();
-  if (user.uid === otherUid) throw new Error('Cannot chat with yourself');
-  const id = threadIdFor(user.uid, otherUid);
-  const ref = threadsCol().doc(id);
-  const existed = (await ref.get()).exists;
-  await ref.set(
-    {
-      participants: [user.uid, otherUid].sort(),
-      participantEmails: {
-        [user.uid]: user.email ?? null,
-        [otherUid]: otherEmail,
-      },
-    },
-    { merge: true },
-  );
-  if (!existed) track.chatStarted(id);
-  return id;
-}
-
-export async function sendTextMessage(threadId: string, text: string) {
-  const user = requireUser();
-  const trimmed = text.trim();
-  if (!trimmed) return;
-  await messagesCol(threadId).add({
-    authorId: user.uid,
-    type: 'text',
-    text: trimmed,
-    createdAt: firestore.FieldValue.serverTimestamp(),
-  });
-  await threadsCol().doc(threadId).set(
-    {
-      lastMessage: trimmed,
-      lastMessageAt: firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
-  track.messageSent(threadId, 'text');
-}
-
-export async function sendVideoCard(threadId: string, video: VideoDoc) {
-  const user = requireUser();
-  await messagesCol(threadId).add({
-    authorId: user.uid,
-    type: 'video_card',
-    videoId: video.id,
-    videoCaption: video.caption ?? '',
-    videoOwnerEmail: video.ownerEmail ?? null,
-    videoDownloadURL: video.downloadURL,
-    createdAt: firestore.FieldValue.serverTimestamp(),
-  });
-  await threadsCol().doc(threadId).set(
-    {
-      lastMessage: 'Shared a video',
-      lastMessageAt: firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
-  track.messageSent(threadId, 'video_card');
-}

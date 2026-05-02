@@ -54,7 +54,7 @@ export const track = {
   followAdded: (targetUid: string) => logEvent('follow_added', { target_uid: targetUid }),
   followRemoved: (targetUid: string) => logEvent('follow_removed', { target_uid: targetUid }),
   chatStarted: (threadId: string) => logEvent('chat_started', { thread_id: threadId }),
-  messageSent: (threadId: string, type: 'text' | 'video_card') =>
+  messageSent: (threadId: string, type: 'text' | 'video_card' | 'image') =>
     logEvent('message_sent', { thread_id: threadId, message_type: type }),
   profilePhotoChanged: () => logEvent('profile_photo_changed'),
   reportSubmitted: (kind: string, reason: string) =>

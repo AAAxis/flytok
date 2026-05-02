@@ -1,6 +1,10 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 import { ensureUserDoc } from '@/lib/firestore';
+import {
+  registerFcmTokenForUser,
+  unregisterCurrentDeviceToken,
+} from '@/lib/messaging';
 import { setUserId, track } from '@/lib/analytics';
 
 type AuthState = {
@@ -25,7 +29,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       setUserId(u?.uid ?? null);
       if (u) {
-        ensureUserDoc().catch(() => {});
+        ensureUserDoc()
+          .then(() => registerFcmTokenForUser())
+          .catch(() => {});
         try {
           const tokenResult = await u.getIdTokenResult();
           setIsAdmin(tokenResult.claims.role === 'admin');
@@ -54,7 +60,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           track.signup('password');
           return cred;
         },
-        logout: () => auth().signOut(),
+        logout: async () => {
+          // Drop this device's token before clearing the auth principal so
+          // notifications don't keep arriving for the previous user.
+          await unregisterCurrentDeviceToken().catch(() => {});
+          await auth().signOut();
+        },
       }}
     >
       {children}
