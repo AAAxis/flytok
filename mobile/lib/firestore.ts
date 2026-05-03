@@ -2,6 +2,7 @@ import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firest
 import storage from '@react-native-firebase/storage';
 import auth from '@react-native-firebase/auth';
 import { track } from './analytics';
+import { captionTokens } from './search/tokens';
 
 export type VideoLocation = { latitude: number; longitude: number; label?: string };
 
@@ -301,6 +302,7 @@ export async function updateOwnVideoCaption(
   await ref.update({
     caption: caption.trim(),
     hashtags: tags,
+    captionTokens: captionTokens(caption),
     updatedAt: firestore.FieldValue.serverTimestamp(),
   });
 }
@@ -436,6 +438,10 @@ export async function uploadVideo({
 
   const tags = hashtags ?? extractHashtags(caption);
   const handles = mentions ?? extractMentions(caption);
+  // Denormalised tokens for the W3 search-by-caption query. Stored on the
+  // video doc at write time so the client can do `array-contains` instead of
+  // a full-text scan we don't have anyway.
+  const tokens = captionTokens(caption);
 
   const doc = await videosCol().add({
     ownerId: user.uid,
@@ -446,6 +452,7 @@ export async function uploadVideo({
     location: location ?? null,
     hashtags: tags,
     mentions: handles,
+    captionTokens: tokens,
     createdAt: firestore.FieldValue.serverTimestamp(),
   });
 

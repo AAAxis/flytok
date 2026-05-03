@@ -12,6 +12,10 @@ import * as admin from 'firebase-admin';
 
 admin.initializeApp();
 
+// W3 places aggregator + scheduled trending rebuild. Re-exported below so
+// `firebase deploy --only functions` picks them up alongside the chat push.
+export { onVideoCreatePlaceCounter, rebuildTrendingPlaces } from './places';
+
 const db = admin.firestore();
 const fcm = admin.messaging();
 

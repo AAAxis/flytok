@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import {
   followingCol,
   getBlockedIds,
@@ -41,6 +42,7 @@ const TABS: { id: FeedTab; label: string; icon: React.ComponentProps<typeof Ioni
 export default function Feed() {
   const me = auth().currentUser;
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [tab, setTab] = useState<FeedTab>('trending');
   const [showAi, setShowAi] = useState(false);
   const [videos, setVideos] = useState<VideoDoc[]>([]);
@@ -260,6 +262,15 @@ export default function Feed() {
       </View>
 
       <Pressable
+        onPress={() => router.push('/search' as never)}
+        hitSlop={8}
+        style={[styles.searchButton, { top: topOverlayOffset }]}
+        accessibilityLabel="Open search"
+      >
+        <Ionicons name="search" size={18} color="#fff" />
+      </Pressable>
+
+      <Pressable
         onPress={() => setShowAi(true)}
         hitSlop={8}
         style={[styles.aiButton, { top: topOverlayOffset }]}
@@ -315,6 +326,16 @@ const styles = StyleSheet.create({
   aiButton: {
     position: 'absolute',
     right: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchButton: {
+    position: 'absolute',
+    left: 16,
     width: 36,
     height: 36,
     borderRadius: 18,

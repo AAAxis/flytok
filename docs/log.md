@@ -429,3 +429,138 @@ was created server-side but not released.
 3. iOS Apple Maps smoke check (Mac sim or any iOS device) — verify the
    map tab renders Apple tiles (no Google attribution) and clusters
    still work without the `PROVIDER_GOOGLE` prop.
+
+## 2026-05-03 — Wave 3 (search + trending places)
+
+Spec: `docs/06-wave-3-search.md`. All acceptance criteria implemented;
+on-device verification still pending — the connected Android target
+`0010934AE002636` was not attached during this session (`adb devices`
+returned empty). Cloud Function deploy is also a Roman-only step
+(`firebase deploy --only functions` needs interactive `firebase login`).
+
+### Search screen + components
+
+`mobile/app/search.tsx` is a top-level route opened from the new
+search-icon overlay top-left of the trending feed (mirroring the AI
+sparkle button on the right). The screen flips between two modes off the
+debounced input:
+
+- **Empty (`q.length < 2`)** — `<PopularChips>` row of curated
+  hashtags (Nightlife / Trips / Camps / Hotels / Club / Restaurant /
+  Beach), `<PrefersSection>` (per-user `users/{uid}.preferred_searches`
+  with add/remove + tap-to-fill), and `<TrendingPlaces>` (single-doc
+  read of `trending_places/snapshot`).
+- **Querying (`q.length >= 2`)** — `<ResultsTabs>` with tabs
+  `All / Users / Videos / Hashtags / Places`. The four queries fire in
+  parallel via `Promise.all`; the tab body renders whichever finished.
+  Tapping a row routes to `/user/[uid]`,
+  `/posts/[ownerUid]?start=…`, the new `/tag/[tag]`, or the existing
+  `/place/[slug]` from W2.
+
+The popular chips use solid vivid backgrounds rather than gradients
+because `expo-linear-gradient` isn't currently in the bundle and the
+spec's bigger goal (visual differentiation between categories) reads
+fine without it. Keeping the JS-only dep set unchanged kept the build
+risk to zero on a session where I can't smoke-test on device.
+
+### Tag feed
+
+`mobile/app/tag/[tag].tsx` is a hashtag-filtered video feed —
+`videos.where('hashtags', 'array-contains', tag)`, lower-cased the
+same way `extractHashtags` writes them. Same player-pool wiring as the
+trending feed and `posts/[uid].tsx`: 3 slots, 8 MB buffer cap,
+eviction-via-`replace(null, true)` on rotate-out, `windowSize=3`. No
+new memory profile to worry about.
+
+### Search query layer
+
+`mobile/lib/search/queries.ts` exports `searchVideos`,
+`searchHashtags`, `searchPlaces`, `getTrendingPlaces`,
+`getPopularHashtags`, plus the `preferred_searches` helpers
+(`getPreferredSearches`, `addPreferredSearch`, `removePreferredSearch`,
+`setPreferredSearches`, `normaliseSearchTerm`) and
+`MAX_PREFERRED_SEARCHES = 20` / `MAX_PREFERRED_LENGTH = 32`. The pure
+`captionTokens` function moved into `mobile/lib/search/tokens.ts` to
+break a cycle between `firestore.ts` and the search-queries module —
+both consume it without the cycle.
+
+`uploadVideo` and `updateOwnVideoCaption` now write
+`captionTokens: string[]` (lowercased, 3+ chars, deduped, capped at
+30 entries). `searchVideos` does an `array-contains` lookup against
+that field — the closest thing Firestore offers to full-text search
+without paying for a third-party index.
+
+### Cloud Functions
+
+`firebase/functions/src/places.ts` (NEW) ships two functions and the
+`slugify` helper:
+
+- `onVideoCreatePlaceCounter` — Firestore v2 trigger on `videos/{vid}`
+  create. Slugifies `location.label` (NFKD-normalised, ASCII-only,
+  80-char cap), then runs a transaction that upserts `places/{slug}`
+  with `videoCount: increment(1)`, `lastVideoAt: serverTimestamp`,
+  `label`, `label_lower`, and a running bbox of (lat, lng) GeoPoints.
+  Stamped `firstVideoAt` on initial create. Skips silently if the
+  video has no `location.label`.
+- `rebuildTrendingPlaces` — `onSchedule('every 360 minutes')`. Reads
+  places with `lastVideoAt >= now - 7d` (falls back to a plain
+  `orderBy('lastVideoAt')` if the composite index isn't present),
+  sorts by `videoCount` desc, writes the top 20 to
+  `trending_places/snapshot`. Idempotent — safe to re-run any time.
+
+`firebase/functions/src/index.ts` re-exports both. `npm run build`
+clean.
+
+### Firestore rules
+
+`firestore.rules` adds:
+
+- `match /places/{slug}` — read by any signed-in user, write
+  `false` (only the service-account-running Cloud Function bypasses
+  rules and writes here).
+- `match /trending_places/{docId}` — same shape.
+- `users/{uid}` rule extended with `preferredSearchesValid()` helper:
+  `preferred_searches`, when present, must be a list ≤ 20 items.
+  Per-element 32-char cap is enforced client-side via
+  `normaliseSearchTerm` (rules language can't iterate a list of
+  strings cleanly).
+
+Deployed via `.deploy-firestore-rules.mjs roamerz-b0056 firestore.rules`
+with `GOOGLE_APPLICATION_CREDENTIALS` set to the service account.
+Ruleset `7edaf9d6-a427-4ce9-8209-529f906021f6` is live.
+
+### Verification
+
+- `npx tsc --noEmit` (mobile) — only the four pre-existing errors
+  remain (`app/v/[id].tsx:23`, `lib/firestore.ts:99`, `lib/geocode.ts:18`,
+  `lib/videoCache.ts:8`), all carried over from session 2 and unrelated
+  to W3 scope. Wave 3 code typechecks clean.
+- `cd firebase/functions && npm run build` — clean.
+- Firestore rules deployed (ruleset
+  `7edaf9d6-a427-4ce9-8209-529f906021f6`).
+- **Pending**: device golden path on `0010934AE002636` — search overlay
+  on the home feed, autofocus + debounce, all 5 tabs render, tag/place
+  feeds open, popular chips fill the input, "Your Prefers" round-trips
+  add/remove, trending places renders after the function runs.
+
+### Manual follow-ups for Roman (W3)
+
+1. Plug in `0010934AE002636` and run `npx expo run:android`. Hit the
+   new search button (top-left of the trending feed), confirm autofocus
+   + 300 ms debounce, type "berlin" (or whatever your seed data has),
+   confirm at least one user / video / hashtag / place lights up. Tap
+   each to confirm routing into `/user/[uid]`, `/posts/…`, `/tag/…`,
+   `/place/…`.
+2. `cd firebase/functions && npm run deploy` — needs interactive
+   `firebase login`. Ships `onVideoCreatePlaceCounter` and
+   `rebuildTrendingPlaces` alongside the existing `onMessageCreated`.
+3. After the deploy, kick `rebuildTrendingPlaces` once manually
+   (`firebase functions:shell` then `rebuildTrendingPlaces()`) so
+   the `trending_places/snapshot` doc exists before the search screen
+   reads it. Without that one-off run, the empty state's "Trending
+   places" section silently renders nothing.
+4. Optional: declare a composite index on `places(lastVideoAt asc,
+   videoCount desc)` if `rebuildTrendingPlaces` logs the indexed-query
+   fallback. Add to `firestore.indexes.json` and
+   `firebase deploy --only firestore:indexes`. The fallback is fine for
+   v1 traffic — only revisit if the function logs warnings at scale.

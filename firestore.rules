@@ -33,9 +33,18 @@ service cloud.firestore {
     // W2 added a `theme` map (preset, backgroundColor, accentColor,
     // backgroundImageURL, backgroundImagePath, avatarStyle, avatarSeed) —
     // covered by the existing isSelf(uid) write rule.
+    // W3 added `preferred_searches: string[]`. Validation runs as part of
+    // the existing self-write rule but is bounded by a helper below so a
+    // bad client can't bloat the doc.
+    function preferredSearchesValid() {
+      return !('preferred_searches' in request.resource.data)
+             || (request.resource.data.preferred_searches is list
+                 && request.resource.data.preferred_searches.size() <= 20);
+    }
     match /users/{uid} {
       allow read:           if signedIn();
-      allow create, update: if isSelf(uid) || isAdmin();
+      allow create, update: if (isSelf(uid) || isAdmin())
+                            && preferredSearchesValid();
       allow delete:         if isAdmin();
 
       // Saved-videos list — strictly private to the owning user.
@@ -142,6 +151,24 @@ service cloud.firestore {
         // Hard delete remains forbidden — soft-delete is the only path.
         allow delete: if false;
       }
+    }
+
+    // === places/{slug} ===
+    // Aggregator collection — written ONLY by the
+    // `onVideoCreatePlaceCounter` Cloud Function (running with service-
+    // account creds, which bypass these rules). Every signed-in client can
+    // read so the search screen can prefix-search by `label_lower`.
+    match /places/{slug} {
+      allow read:                   if signedIn();
+      allow create, update, delete: if false;
+    }
+
+    // === trending_places/{docId} ===
+    // Single doc (`snapshot`) written by the `rebuildTrendingPlaces`
+    // scheduled function. Same shape as places — read-only to clients.
+    match /trending_places/{docId} {
+      allow read:                   if signedIn();
+      allow create, update, delete: if false;
     }
 
     // === reports/{reportId} ===

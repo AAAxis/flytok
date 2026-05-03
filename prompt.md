@@ -68,10 +68,13 @@ entry in `docs/log.md`.
       Android, profile theme model + customize sheet + visible to
       visiting users.
 
-- [ ] **Wave 3 — Search + Trending places** — `docs/06-wave-3-search.md`
+- [x] **Wave 3 — Search + Trending places** — `docs/06-wave-3-search.md`
       Search screen (users / videos / hashtags / places / trending),
       popular hashtag chips, "Your Prefers", Cloud Function place
-      aggregator + scheduled trending rebuild.
+      aggregator + scheduled trending rebuild. *(Code shipped 2026-05-03 —
+      device golden path on `0010934AE002636` still pending Roman's
+      re-attach + a one-off Cloud Function deploy; see `docs/log.md`
+      Wave 3 section for follow-ups.)*
 
 - [ ] **Wave 4 — Upload v2** — `docs/07-wave-4-upload-v2.md`
       Optional native trim, music picker (curated library + device
