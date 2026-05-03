@@ -292,3 +292,140 @@ alongside the existing `largeHeap="true"` flag.
    Either run `firebase deploy --only firestore:indexes` from an
    interactive shell or follow the one-click create URL Firebase prints
    on the first failed search.
+
+## 2026-05-03 — Wave 2 (map redesign + profile customization)
+
+Spec: `docs/05-wave-2-map-profile.md`. Built and installed on
+`0010934AE002636` via `npx expo run:android` (PID 3857, no FATAL /
+OutOfMemoryError in `adb logcat`). The connected Nothing Phone 3a Pro
+ran a clean incremental build — no native config changed this wave, so
+no prebuild was needed.
+
+### Map
+
+`mobile/app/(tabs)/map.tsx` rewritten on top of
+`react-native-map-clustering@^4.0.0` (pure-JS wrapper around
+`react-native-maps`). iOS uses Apple Maps (no `provider` prop); Android
+forces `PROVIDER_GOOGLE` (the W1-injected
+`com.google.android.geo.API_KEY` meta-data is what unlocks tiles). The
+component had to be renamed `Map` → `MapScreen` because the new
+`new Map<string, Place>()` aggregation shadowed the global Map
+constructor and TS flagged it as a missing construct signature.
+
+Videos are now grouped by lowercase `location.label` so each marker
+represents a *place* (not a single video), with a 44×44 rounded bubble
+showing the per-place video count and a drop shadow. SuperCluster radius
+44 px, count bubble color `colors.accent`, count text `colors.bg`. The
+spec wanted a video-poster thumbnail inside each bubble — that requires
+a `thumbnailURL` on every video doc which we don't capture at upload
+yet, so the bubble shows the count only for now (deferred to W4 once
+the upload pipeline can write a poster).
+
+Tapping a marker opens a new `<PlaceCard>` bottom sheet
+(`mobile/components/PlaceCard.tsx`) built on the W1
+`<AppBottomSheet>` primitive: place label + count, top 3 video tiles
+(rendered via `expo-video` muted/non-looping `useVideoPlayer`), and a
+brand-color "Open feed" CTA. Tapping a tile or the CTA routes to a new
+place-scoped feed at `mobile/app/place/[slug].tsx`. The slug is just
+`encodeURIComponent(label.toLowerCase())` — the original-case `label`
+travels via query param so the screen header reads naturally. The
+place-feed reuses the same player-pool infra as `posts/[uid].tsx` (3
+slots, 8 MB buffer cap, eviction on rotate-out) and filters videos
+client-side until the W3 places aggregator lands on the backend.
+
+### Profile theme model
+
+New `mobile/lib/theme/userTheme.ts` defines `UserTheme`
+(`preset | backgroundColor | backgroundImageURL | backgroundImagePath |
+accentColor | avatarStyle | avatarSeed`), a `defaultTheme` fallback,
+6 presets (ocean / sunset / forest / purple / rose / dark), 12-color
+background and accent palettes, an `applyTheme()` helper that returns
+the styles each profile screen needs, and a `useUserTheme(uid)`
+real-time subscription. `saveUserTheme()` does an atomic merge under
+`theme.*` on the user doc. Background-image flow:
+`expo-image-manipulator` resize to 1600 px long side @ JPEG 0.85 →
+upload to fixed `users/{uid}/profile/background.jpg` →
+`getDownloadURL()` → set `theme.backgroundImageURL` +
+`theme.backgroundImagePath` + `preset: 'custom'`. Old image is deleted
+from Storage when a new one replaces it.
+
+`mobile/lib/avatars.ts` exposes `dicebearURL(style, seed, size)` and
+the 6 supported `AvatarStyle` values mapped to DiceBear endpoints
+(adventurer / bottts / fun-emoji / avataaars / pixel-art).
+`avatarStyle === 'default'` returns `null` — caller falls back to the
+uploaded `photoURL` (or the person glyph).
+
+### Customize sheet
+
+`mobile/components/CustomizeThemeSheet.tsx` mirrors the screenshot:
+preset row → background-color grid → background image upload (with
+preview, replace, remove) → accent-color grid → avatar style grid (6
+DiceBear previews seeded by uid). Built on `<AppBottomSheet>` at 90%
+snap with `BottomSheetScrollView`. Every interaction writes through
+`saveUserTheme` so the live `useUserTheme` subscription instantly
+reflects the change in the profile header behind the sheet.
+
+### Theme application
+
+Both `mobile/app/(tabs)/profile.tsx` (own profile) and
+`mobile/app/user/[uid].tsx` (visiting profile) now wrap the header in
+a new `ThemedHeader` helper: `<ImageBackground>` + scrim when
+`backgroundImageURL` is set, plain colored `<View>` otherwise. Avatar
+gets a 2 px border in the user's accent color. The own-profile header
+gained an actions row with **Edit profile** and a brand-accented
+**Customize** button (opens the new sheet). The visiting-profile
+**Follow** button background uses the visited user's accent color so
+themes propagate to anyone who opens `/user/[uid]`. Theme is **not**
+applied to feed / inbox / map / search — confirmed by leaving those
+screens untouched.
+
+### DiceBear caching note (heads-up for W4)
+
+`<Image source={{ uri: dicebearURL(...) }}>` hits DiceBear once per
+unique style+seed and React Native's image cache holds it for the
+process lifetime; that's fine for the customize grid (6 fetches per
+session, no-op afterward). W4's music picker plans to render remote
+thumbnails too — if avatars start to feel slow on first paint we
+should switch to `expo-image` for shared on-disk cache, but for now
+the bare `<Image>` is enough.
+
+### Rules
+
+`firestore.rules` adds a comment under `users/{uid}` documenting the
+new self-writable `theme.*` map — the existing `isSelf(uid)` write
+rule already covers it, so behavior is unchanged. **Did not redeploy**
+the ruleset (current ruleset
+`fa5cb462-2456-40fa-bf4a-961b47e8b238` from W1 is still correct).
+
+`storage.rules` gains a new `users/{uid}/profile/{file=**}` rule:
+owner-only writes, public reads, 5 MB cap, `image/*` content type,
+`delete` only by owner. The service-account release call still hits
+`PERMISSION_DENIED` on the Storage Rules release endpoint (same
+limitation logged in session 2). Ruleset `0c88402d-2b30-443a-8b1e-76c721f93abc`
+was created server-side but not released.
+
+### Verification
+
+- `npx tsc --noEmit` — only the four pre-existing errors remain
+  (`app/v/[id].tsx:23`, `lib/firestore.ts:98`, `lib/geocode.ts:18`,
+  `lib/videoCache.ts:8`). Wave 2 code typechecks clean.
+- `npx expo run:android` rebuild + install on `0010934AE002636`. App
+  boots; PID 3857 stable; no `FATAL EXCEPTION` / `OutOfMemoryError` in
+  `adb logcat`.
+- **Pending (manual)**: two-account device test — A picks an Ocean
+  preset + uploads a bg image + Robot avatar; B logs in, opens
+  `/user/{A.uid}`, sees A's theme. iOS Apple Maps tiles check (no
+  Google attribution) — needs an iOS sim/device.
+
+### Manual follow-ups for Roman (W2)
+
+1. `firebase deploy --only storage` — service-account auth still can't
+   release Storage rules. Until that runs, the new
+   `users/{uid}/profile/*` rule isn't live, and the customize sheet's
+   image upload will be denied by the existing default-deny.
+2. Two-account theme test on `0010934AE002636` (or one device + one
+   simulator). Confirm visiting-profile pulls A's theme, including the
+   bg image, accent-colored Follow button, and DiceBear avatar.
+3. iOS Apple Maps smoke check (Mac sim or any iOS device) — verify the
+   map tab renders Apple tiles (no Google attribution) and clusters
+   still work without the `PROVIDER_GOOGLE` prop.

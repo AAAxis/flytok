@@ -42,6 +42,19 @@ service firebase.storage {
                    && request.resource.contentType.matches('image/.*');
     }
 
+    // === users/{uid}/profile/... (W2) ===
+    // Profile background image — owner-only writes, public reads, 5 MB cap,
+    // image/* content type. Currently a single `background.jpg` per user but
+    // declared as `{file=**}` so future profile assets can land here.
+    match /users/{uid}/profile/{file=**} {
+      allow read:   if request.auth != null;
+      allow write:  if request.auth != null
+                    && request.auth.uid == uid
+                    && request.resource.size < 5 * 1024 * 1024
+                    && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
     // Default deny — anything not matched above is forbidden.
   }
 }

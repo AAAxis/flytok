@@ -63,7 +63,7 @@ entry in `docs/log.md`.
       golden path on `0010934AE002636` still pending Roman's re-attach;
       see `docs/log.md` Wave 1 section for follow-ups.)*
 
-- [ ] **Wave 2 — Map redesign + Profile customization** — `docs/05-wave-2-map-profile.md`
+- [x] **Wave 2 — Map redesign + Profile customization** — `docs/05-wave-2-map-profile.md`
       Marker clustering, place card, Apple Maps iOS / Google Maps
       Android, profile theme model + customize sheet + visible to
       visiting users.

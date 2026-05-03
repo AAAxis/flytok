@@ -30,6 +30,9 @@ service cloud.firestore {
     // Self-writable fields (W1+): displayName, displayNameLower (denormalised
     // for prefix search), photoURL, bio, discoverable (default true; opt-out
     // hides the user from global handle search), email, lastSeenAt.
+    // W2 added a `theme` map (preset, backgroundColor, accentColor,
+    // backgroundImageURL, backgroundImagePath, avatarStyle, avatarSeed) —
+    // covered by the existing isSelf(uid) write rule.
     match /users/{uid} {
       allow read:           if signedIn();
       allow create, update: if isSelf(uid) || isAdmin();

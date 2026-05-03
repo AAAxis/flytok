@@ -3,6 +3,7 @@ import auth from '@react-native-firebase/auth';
 import {
   ActivityIndicator,
   Image,
+  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,6 +25,8 @@ import { useUserLabel, useUserProfile } from '@/lib/useUserLabel';
 import { VideoGrid } from '@/components/VideoGrid';
 import { FollowListSheet } from '@/components/FollowListSheet';
 import { colors } from '@/lib/theme';
+import { applyTheme, useUserTheme } from '@/lib/theme/userTheme';
+import { dicebearURL } from '@/lib/avatars';
 
 export default function UserProfile() {
   const { uid } = useLocalSearchParams<{ uid: string }>();
@@ -41,6 +44,11 @@ export default function UserProfile() {
   const [followList, setFollowList] = useState<null | 'following' | 'followers'>(null);
 
   const isMe = me?.uid === uid;
+
+  const theme = useUserTheme(uid);
+  const themed = applyTheme(theme);
+  const dicebear = uid ? dicebearURL(theme.avatarStyle, theme.avatarSeed ?? uid, 256) : null;
+  const avatarUri = dicebear ?? profile?.photoURL ?? null;
 
   const load = useCallback(async () => {
     if (!uid) return;
@@ -114,11 +122,14 @@ export default function UserProfile() {
       />
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 60 }]}>
-        <View style={styles.headerArea}>
-          {profile?.photoURL ? (
-            <Image source={{ uri: profile.photoURL }} style={styles.avatarImage} />
+        <ThemedHeader
+          backgroundColor={themed.headerBackgroundColor}
+          backgroundImageURL={themed.headerBackgroundImageURL}
+        >
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={[styles.avatarImage, themed.avatarBorder]} />
           ) : (
-            <View style={styles.avatar}>
+            <View style={[styles.avatar, themed.avatarBorder]}>
               <Ionicons name="person" size={36} color={colors.text} />
             </View>
           )}
@@ -146,6 +157,7 @@ export default function UserProfile() {
               disabled={busy}
               style={({ pressed }) => [
                 styles.followButton,
+                { backgroundColor: themed.accentColor },
                 following && styles.followingButton,
                 pressed && styles.followPressed,
               ]}
@@ -161,7 +173,7 @@ export default function UserProfile() {
               )}
             </Pressable>
           )}
-        </View>
+        </ThemedHeader>
 
         <View style={styles.divider} />
 
@@ -188,6 +200,30 @@ export default function UserProfile() {
       />
     </SafeAreaView>
   );
+}
+
+function ThemedHeader({
+  backgroundColor,
+  backgroundImageURL,
+  children,
+}: {
+  backgroundColor: string;
+  backgroundImageURL: string | null;
+  children: React.ReactNode;
+}) {
+  if (backgroundImageURL) {
+    return (
+      <ImageBackground
+        source={{ uri: backgroundImageURL }}
+        style={styles.headerArea}
+        imageStyle={styles.headerBgImage}
+      >
+        <View style={styles.headerScrim} />
+        <View style={styles.headerContent}>{children}</View>
+      </ImageBackground>
+    );
+  }
+  return <View style={[styles.headerArea, { backgroundColor }]}>{children}</View>;
 }
 
 function Stat({
@@ -226,9 +262,16 @@ const styles = StyleSheet.create({
   headerArea: {
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 20,
+    paddingVertical: 24,
     gap: 8,
+    overflow: 'hidden',
   },
+  headerBgImage: { resizeMode: 'cover' },
+  headerScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  headerContent: { alignItems: 'center', width: '100%', gap: 8 },
   avatar: {
     width: 96,
     height: 96,

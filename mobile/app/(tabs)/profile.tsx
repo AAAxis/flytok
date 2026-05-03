@@ -4,6 +4,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Image,
+  ImageBackground,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -29,9 +30,12 @@ import { Alert } from 'react-native';
 import { VideoGrid } from '@/components/VideoGrid';
 import { SettingsSheet } from '@/components/SettingsSheet';
 import { EditProfileSheet } from '@/components/EditProfileSheet';
+import { CustomizeThemeSheet } from '@/components/CustomizeThemeSheet';
 import { FollowListSheet } from '@/components/FollowListSheet';
 import { getCachedProfile, setCachedProfile } from '@/lib/profileCache';
 import { colors } from '@/lib/theme';
+import { applyTheme, useUserTheme } from '@/lib/theme/userTheme';
+import { dicebearURL } from '@/lib/avatars';
 
 type Tab = 'mine' | 'saved';
 
@@ -52,7 +56,13 @@ export default function Profile() {
   const [tab, setTab] = useState<Tab>('mine');
   const [showSettings, setShowSettings] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [showCustomize, setShowCustomize] = useState(false);
   const [followList, setFollowList] = useState<null | 'following' | 'followers'>(null);
+
+  const theme = useUserTheme(me?.uid);
+  const themed = applyTheme(theme);
+  const dicebear = me ? dicebearURL(theme.avatarStyle, theme.avatarSeed ?? me.uid, 256) : null;
+  const avatarUri = dicebear ?? photoURL;
 
   const load = useCallback(async () => {
     if (!me) return;
@@ -206,16 +216,22 @@ export default function Profile() {
           </View>
         ) : (
           <>
-            <View style={styles.headerArea}>
+            <ThemedHeader
+              backgroundColor={themed.headerBackgroundColor}
+              backgroundImageURL={themed.headerBackgroundImageURL}
+            >
               <Pressable onPress={() => setShowEdit(true)} style={styles.avatarWrap} hitSlop={6}>
-                {photoURL ? (
-                  <Image source={{ uri: photoURL }} style={styles.avatarImage} />
+                {avatarUri ? (
+                  <Image
+                    source={{ uri: avatarUri }}
+                    style={[styles.avatarImage, themed.avatarBorder]}
+                  />
                 ) : (
-                  <View style={styles.avatar}>
+                  <View style={[styles.avatar, themed.avatarBorder]}>
                     <Ionicons name="person" size={32} color={colors.text} />
                   </View>
                 )}
-                <View style={styles.editBadge}>
+                <View style={[styles.editBadge, { backgroundColor: themed.accentColor }]}>
                   <Ionicons name="pencil" size={12} color={colors.bg} />
                 </View>
               </Pressable>
@@ -236,7 +252,31 @@ export default function Profile() {
                   onPress={() => setFollowList('followers')}
                 />
               </View>
-            </View>
+
+              <View style={styles.actionsRow}>
+                <Pressable
+                  onPress={() => setShowEdit(true)}
+                  style={({ pressed }) => [
+                    styles.actionBtn,
+                    pressed && styles.actionPressed,
+                  ]}
+                >
+                  <Ionicons name="pencil" size={14} color={colors.text} />
+                  <Text style={styles.actionText}>Edit profile</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setShowCustomize(true)}
+                  style={({ pressed }) => [
+                    styles.actionBtn,
+                    { backgroundColor: themed.accentColor, borderColor: themed.accentColor },
+                    pressed && styles.actionPressed,
+                  ]}
+                >
+                  <Ionicons name="color-palette-outline" size={14} color={colors.bg} />
+                  <Text style={[styles.actionText, { color: colors.bg }]}>Customize</Text>
+                </Pressable>
+              </View>
+            </ThemedHeader>
 
             <View style={styles.tabsBar}>
               <TabButton
@@ -285,6 +325,10 @@ export default function Profile() {
         onClose={() => setShowEdit(false)}
         onSaved={load}
       />
+      <CustomizeThemeSheet
+        visible={showCustomize}
+        onClose={() => setShowCustomize(false)}
+      />
       <FollowListSheet
         uid={me?.uid ?? null}
         mode={followList ?? 'following'}
@@ -293,6 +337,30 @@ export default function Profile() {
       />
     </SafeAreaView>
   );
+}
+
+function ThemedHeader({
+  backgroundColor,
+  backgroundImageURL,
+  children,
+}: {
+  backgroundColor: string;
+  backgroundImageURL: string | null;
+  children: React.ReactNode;
+}) {
+  if (backgroundImageURL) {
+    return (
+      <ImageBackground
+        source={{ uri: backgroundImageURL }}
+        style={styles.headerArea}
+        imageStyle={styles.headerBgImage}
+      >
+        <View style={styles.headerScrim} />
+        <View style={styles.headerContent}>{children}</View>
+      </ImageBackground>
+    );
+  }
+  return <View style={[styles.headerArea, { backgroundColor }]}>{children}</View>;
 }
 
 function Stat({
@@ -348,7 +416,19 @@ const styles = StyleSheet.create({
   handle: { color: colors.text, fontSize: 16, fontWeight: '600' },
   content: {},
   loading: { paddingVertical: 60, alignItems: 'center' },
-  headerArea: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 12, paddingBottom: 16 },
+  headerArea: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 20,
+    overflow: 'hidden',
+  },
+  headerBgImage: { resizeMode: 'cover' },
+  headerScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  headerContent: { alignItems: 'center', width: '100%' },
   avatarWrap: { position: 'relative' },
   avatar: {
     width: 88,
@@ -377,8 +457,28 @@ const styles = StyleSheet.create({
     borderColor: colors.bg,
     borderWidth: 2,
   },
-  bio: { color: colors.textMuted, fontSize: 13, textAlign: 'center', marginTop: 16, paddingHorizontal: 24 },
+  bio: { color: colors.text, fontSize: 13, textAlign: 'center', marginTop: 16, paddingHorizontal: 24 },
   statsRow: { flexDirection: 'row', gap: 24, marginTop: 16 },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 18,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  actionPressed: { opacity: 0.85 },
+  actionText: { color: colors.text, fontSize: 12, fontWeight: '600' },
   stat: { alignItems: 'center' },
   statValue: { color: colors.text, fontSize: 16, fontWeight: '700' },
   statLabel: { color: colors.textDim, fontSize: 12 },
