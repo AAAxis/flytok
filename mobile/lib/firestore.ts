@@ -1,8 +1,10 @@
 import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
-import storage from '@react-native-firebase/storage';
+import storage, { FirebaseStorageTypes } from '@react-native-firebase/storage';
 import auth from '@react-native-firebase/auth';
 import { track } from './analytics';
 import { captionTokens } from './search/tokens';
+import type { AudioSelection } from './audio';
+import type { UploadProgressCallback } from './uploadProgress';
 
 export type VideoLocation = { latitude: number; longitude: number; label?: string };
 
@@ -413,19 +415,29 @@ export async function ensureUserDoc() {
   await ref.set(update, { merge: true });
 }
 
-export async function uploadVideo({
-  uri,
-  caption,
-  location,
-  hashtags,
-  mentions,
-}: {
+export type UploadVideoArgs = {
   uri: string;
   caption: string;
   location?: VideoLocation | null;
   hashtags?: string[];
   mentions?: string[];
-}) {
+  /**
+   * W4: optional audio selection. Stored on the video doc as
+   * `audioSource` + (`audioTrackId` | `audioUserPath`) so a future server-
+   * side mux or playback overlay can resolve the chosen track.
+   */
+  audio?: AudioSelection;
+  /** Progress callback fired during the storage `putFile` byte stream. */
+  onProgress?: UploadProgressCallback;
+  /**
+   * If supplied, the upload task is registered here so the caller can cancel
+   * mid-upload (`task.cancel()`). The ref is cleared once the upload settles.
+   */
+  taskRef?: { current: FirebaseStorageTypes.Task | null };
+};
+
+export async function uploadVideo(args: UploadVideoArgs) {
+  const { uri, caption, location, hashtags, mentions, audio, onProgress, taskRef } = args;
   const user = requireUser();
 
   const ts = Date.now();
@@ -433,7 +445,20 @@ export async function uploadVideo({
   const storagePath = `videos/${user.uid}/${ts}.${ext}`;
 
   const ref = storage().ref(storagePath);
-  await ref.putFile(uri);
+  const task = ref.putFile(uri);
+  if (taskRef) taskRef.current = task;
+  if (onProgress) {
+    task.on('state_changed', (snap) => {
+      const total = snap.totalBytes || 1;
+      onProgress({ phase: 'upload', percent: Math.min(1, snap.bytesTransferred / total) });
+    });
+  }
+  try {
+    await task;
+  } finally {
+    if (taskRef) taskRef.current = null;
+  }
+  onProgress?.({ phase: 'finalize', percent: 0 });
   const downloadURL = await ref.getDownloadURL();
 
   const tags = hashtags ?? extractHashtags(caption);
@@ -442,6 +467,8 @@ export async function uploadVideo({
   // video doc at write time so the client can do `array-contains` instead of
   // a full-text scan we don't have anyway.
   const tokens = captionTokens(caption);
+
+  const audioFields = audioToDocFields(audio);
 
   const doc = await videosCol().add({
     ownerId: user.uid,
@@ -453,8 +480,10 @@ export async function uploadVideo({
     hashtags: tags,
     mentions: handles,
     captionTokens: tokens,
+    ...audioFields,
     createdAt: firestore.FieldValue.serverTimestamp(),
   });
+  onProgress?.({ phase: 'finalize', percent: 1 });
 
   track.videoUploaded({
     hasLocation: !!location,
@@ -462,6 +491,22 @@ export async function uploadVideo({
   });
 
   return { id: doc.id, storagePath, downloadURL };
+}
+
+function audioToDocFields(audio: AudioSelection | undefined) {
+  if (!audio || audio.source === 'original') {
+    return { audioSource: 'original' as const };
+  }
+  if (audio.source === 'library') {
+    return {
+      audioSource: 'library' as const,
+      audioTrackId: audio.track.id,
+    };
+  }
+  return {
+    audioSource: 'user_upload' as const,
+    audioUserPath: audio.storagePath,
+  };
 }
 
 export async function postComment(videoId: string, text: string) {

@@ -76,9 +76,15 @@ entry in `docs/log.md`.
       re-attach + a one-off Cloud Function deploy; see `docs/log.md`
       Wave 3 section for follow-ups.)*
 
-- [ ] **Wave 4 — Upload v2** — `docs/07-wave-4-upload-v2.md`
+- [x] **Wave 4 — Upload v2** — `docs/07-wave-4-upload-v2.md`
       Optional native trim, music picker (curated library + device
       upload), real upload progress, post-upload success screen.
+      *(Code shipped 2026-05-03 — device golden path on
+      `0010934AE002636` still pending Roman's re-attach + native
+      rebuild for `react-native-video-trim`. Client-side audio mux
+      deferred — see `docs/log.md` Wave 4 section for the
+      `react-native-video-trim` / `ffmpeg-kit-react-native` analysis
+      and full follow-up list.)*
 
 - [ ] **Wave 5 — Fastlane + Store submission** *(deferred)* —
       `docs/08-wave-5-fastlane.md`

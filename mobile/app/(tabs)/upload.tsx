@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,9 +16,20 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useRouter } from 'expo-router';
-import { extractHashtags, extractMentions, uploadVideo, type VideoLocation } from '@/lib/firestore';
+import {
+  extractHashtags,
+  extractMentions,
+  uploadVideo,
+  type VideoLocation,
+} from '@/lib/firestore';
+import type { FirebaseStorageTypes } from '@react-native-firebase/storage';
 import { geocodeAddress, getCurrentLocationLabeled, type GeoResult } from '@/lib/geocode';
 import { colors } from '@/lib/theme';
+import { TrimButton } from '@/components/upload/TrimButton';
+import { MusicPickerSheet } from '@/components/upload/MusicPickerSheet';
+import { UploadProgressBar } from '@/components/upload/UploadProgressBar';
+import { deleteUserAudio, type AudioSelection } from '@/lib/audio';
+import type { UploadPhase } from '@/lib/uploadProgress';
 
 type LocationState =
   | { status: 'idle' }
@@ -26,12 +37,16 @@ type LocationState =
   | { status: 'results'; results: GeoResult[] }
   | { status: 'error'; message: string };
 
+const ORIGINAL_AUDIO: AudioSelection = { source: 'original' };
+
 export default function Upload() {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
   const [uri, setUri] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [progress, setProgress] = useState<'idle' | 'uploading'>('idle');
+  const [phase, setPhase] = useState<UploadPhase>('idle');
+  const [pct, setPct] = useState(0);
 
   const [locationQuery, setLocationQuery] = useState('');
   const [location, setLocation] = useState<VideoLocation | null>(null);
@@ -42,6 +57,13 @@ export default function Upload() {
   const [extraTags, setExtraTags] = useState<string[]>([]);
   const [mentionInput, setMentionInput] = useState('');
   const [mentions, setMentions] = useState<string[]>([]);
+
+  const [audio, setAudio] = useState<AudioSelection>(ORIGINAL_AUDIO);
+  const [musicSheetOpen, setMusicSheetOpen] = useState(false);
+
+  // Holds the in-flight Storage `putFile` task so we can cancel it from the
+  // progress bar's Cancel button.
+  const taskRef = useRef<FirebaseStorageTypes.Task | null>(null);
 
   const player = useVideoPlayer(uri ?? '', (p) => {
     p.loop = true;
@@ -153,6 +175,26 @@ export default function Upload() {
     setLocState({ status: 'idle' });
   }
 
+  function resetForm() {
+    setUri(null);
+    setCaption('');
+    setExtraTags([]);
+    setMentions([]);
+    setTagInput('');
+    setMentionInput('');
+    setAudio(ORIGINAL_AUDIO);
+    clearLocation();
+    setStep(1);
+  }
+
+  function cancelUpload() {
+    try {
+      taskRef.current?.cancel?.();
+    } catch (err) {
+      console.warn('[upload] cancel failed:', err);
+    }
+  }
+
   async function handleUpload() {
     if (!uri) return;
     // Pull any @mentions left in the caption into the explicit list too.
@@ -160,31 +202,54 @@ export default function Upload() {
     const finalMentions = Array.from(new Set([...mentions, ...captionMentions]));
 
     setProgress('uploading');
+    setPhase('upload');
+    setPct(0);
     try {
-      await uploadVideo({
+      const { id } = await uploadVideo({
         uri,
         caption,
         location,
         hashtags: allTags,
         mentions: finalMentions,
+        audio,
+        taskRef,
+        onProgress: ({ phase: p, percent }) => {
+          setPhase(p);
+          setPct(percent);
+        },
       });
-      setUri(null);
-      setCaption('');
-      setExtraTags([]);
-      setMentions([]);
-      setTagInput('');
-      setMentionInput('');
-      clearLocation();
-      setStep(1);
-      router.replace('/');
+      resetForm();
+      router.replace({ pathname: '/upload/success', params: { videoId: id } });
     } catch (err: any) {
-      Alert.alert('Upload failed', err?.message ?? 'Unknown error');
+      // RNFB surfaces a manual cancel as `storage/cancelled` — treat gracefully.
+      if (err?.code === 'storage/cancelled') {
+        Alert.alert('Upload cancelled', 'Your upload was stopped.');
+      } else {
+        Alert.alert('Upload failed', err?.message ?? 'Unknown error');
+      }
     } finally {
       setProgress('idle');
+      setPhase('idle');
+      setPct(0);
+      taskRef.current = null;
     }
   }
 
+  async function clearAudioSelection() {
+    if (audio.source === 'user_upload') {
+      // Best-effort cleanup of the orphaned upload.
+      await deleteUserAudio(audio.storagePath);
+    }
+    setAudio(ORIGINAL_AUDIO);
+  }
+
   const editable = progress === 'idle';
+  const audioSummary =
+    audio.source === 'library'
+      ? `${audio.track.title} · ${audio.track.artist}`
+      : audio.source === 'user_upload'
+        ? audio.title
+        : 'Original sound';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -199,21 +264,52 @@ export default function Upload() {
           </View>
 
           {step === 1 && uri ? (
-            <View style={styles.preview}>
-              <VideoView
-                player={player}
-                style={styles.video}
-                contentFit="cover"
-                nativeControls={false}
+            <>
+              <View style={styles.preview}>
+                <VideoView
+                  player={player}
+                  style={styles.video}
+                  contentFit="cover"
+                  nativeControls={false}
+                />
+                <Pressable
+                  onPress={() => setUri(null)}
+                  style={styles.changeButton}
+                  hitSlop={8}
+                >
+                  <Text style={styles.changeText}>Change</Text>
+                </Pressable>
+              </View>
+              <TrimButton
+                uri={uri}
+                disabled={!editable}
+                onTrimmed={(trimmed) => setUri(trimmed)}
               />
               <Pressable
-                onPress={() => setUri(null)}
-                style={styles.changeButton}
-                hitSlop={8}
+                onPress={() => setMusicSheetOpen(true)}
+                disabled={!editable}
+                style={({ pressed }) => [
+                  styles.audioBtn,
+                  !editable && styles.submitDisabled,
+                  pressed && styles.pickerPressed,
+                ]}
               >
-                <Text style={styles.changeText}>Change</Text>
+                <Ionicons name="musical-notes-outline" size={16} color={colors.text} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.audioLabel}>Music</Text>
+                  <Text style={styles.audioMeta} numberOfLines={1}>
+                    {audioSummary}
+                  </Text>
+                </View>
+                {audio.source !== 'original' ? (
+                  <Pressable onPress={clearAudioSelection} hitSlop={8}>
+                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                  </Pressable>
+                ) : (
+                  <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                )}
               </Pressable>
-            </View>
+            </>
           ) : step === 1 ? (
             <View style={styles.pickerRow}>
               <Pressable onPress={pickVideo} style={({ pressed }) => [styles.pickerButton, pressed && styles.pickerPressed]}>
@@ -423,6 +519,10 @@ export default function Upload() {
             </>
           )}
 
+          {progress === 'uploading' ? (
+            <UploadProgressBar phase={phase} percent={pct} onCancel={cancelUpload} />
+          ) : null}
+
           {step === 1 ? (
             <Pressable
               onPress={() => setStep(2)}
@@ -466,6 +566,13 @@ export default function Upload() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <MusicPickerSheet
+        visible={musicSheetOpen}
+        onClose={() => setMusicSheetOpen(false)}
+        selected={audio}
+        onSelect={setAudio}
+      />
     </SafeAreaView>
   );
 }
@@ -551,6 +658,19 @@ const styles = StyleSheet.create({
   },
   pickerPressed: { backgroundColor: colors.surfaceAlt },
   pickerLabel: { color: colors.text, fontSize: 14, fontWeight: '500' },
+  audioBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  audioLabel: { color: colors.text, fontSize: 14, fontWeight: '600' },
+  audioMeta: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   label: { color: colors.textMuted, fontSize: 12, marginTop: 4 },
   input: {
     backgroundColor: colors.surface,

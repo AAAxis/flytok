@@ -564,3 +564,173 @@ Ruleset `7edaf9d6-a427-4ce9-8209-529f906021f6` is live.
    fallback. Add to `firestore.indexes.json` and
    `firebase deploy --only firestore:indexes`. The fallback is fine for
    v1 traffic — only revisit if the function logs warnings at scale.
+
+## 2026-05-03 — Wave 4 (upload v2)
+
+Spec: `docs/07-wave-4-upload-v2.md`. Code shipped on 2026-05-03; on-device
+verification still pending — the connected Android target
+`0010934AE002636` was not attached during this session (`adb devices`
+returned empty), and W4 is the first wave that requires a native
+rebuild (new Turbo/native module from `react-native-video-trim`).
+
+### Trim step
+
+`react-native-video-trim@^8.0.0` installed via `npx expo install`. No
+custom Expo config plugin needed — the package auto-links via
+`@react-native-community/cli` on both iOS and Android, and works on the
+old architecture (`newArchEnabled: false`) through its `OldArch.ts`
+shim. The `mobile/components/upload/TrimButton.tsx` component validates
+the source file with `isValidFile()`, calls `showEditor()` with a
+60 000 ms ceiling that matches the existing `videoMaxDuration` on the
+camera path, and listens via
+`new NativeEventEmitter(NativeModules.VideoTrim)` for the
+`'VideoTrim'` event (the lib's old-arch contract). On
+`onFinishTrimming` the trimmed file path replaces the upload form's
+`uri` state; cancel / error events restore the original picker uri
+without touching state.
+
+### Music picker
+
+`mobile/components/upload/MusicPickerSheet.tsx` is built on the W1
+`<AppBottomSheet>` primitive at an 85% snap. Two pills toggle between
+**Library** (curated `tracks/*` docs streamed via the new
+`mobile/lib/audio.ts:loadTracks` helper) and **From device**
+(`expo-document-picker` `audio/*` → `uploadUserAudio` →
+`audio_user/{uid}/{ts}.{ext}`). Library rows tap-to-preview through
+`createAudioPlayer` (`expo-audio@~1.1.x`, looped + pre-resolved
+download URL) and long-press / Use button to commit. The picker
+closes via the Done button so the user can audition multiple tracks
+without re-opening. The selected `AudioSelection` flows back through
+the sheet's `onSelect` to the upload screen and is persisted on the
+video doc as `audioSource` + `audioTrackId | audioUserPath`.
+
+### No client-side audio mux (deferred)
+
+The spec called for muxing the chosen audio onto the trimmed video at
+upload time, with `react-native-video-trim`'s mux helper as the first
+attempt and `ffmpeg-kit-react-native` as the fallback. Both options
+turned out to be unviable today:
+
+- `react-native-video-trim`'s headless `merge()` runs FFmpeg's
+  **concat filter** (sequential merge of multiple clips) per its iOS
+  `VideoTrim.swift:1424` comment ("Concatenates multiple local video
+  files using FFmpeg's concat filter"). It is not a stream-replacement
+  mux and cannot swap a video's audio track.
+- `ffmpeg-kit-react-native@6.0.2` (last published 2023-09-18) is
+  marked deprecated on npm: "Package no longer supported. Contact
+  Support…". Adding it would lock us to an unmaintained binary +
+  ~30 MB APK growth.
+
+Instead, W4 ships only the metadata side of the contract: the video
+doc records `audioSource: 'library' | 'user_upload' | 'original'`
+plus `audioTrackId` or `audioUserPath` so a future wave can do the
+mux server-side (Cloud Function on the existing `videos/{vid}`
+trigger) or render the chosen audio as a playback overlay in the
+feed. Original audio remains in the uploaded file regardless. This is
+documented at the top of `mobile/lib/audio.ts` so the trade-off
+isn't a surprise to the next reader.
+
+### Upload progress + cancel
+
+`uploadVideo()` in `mobile/lib/firestore.ts` now accepts
+`audio?: AudioSelection`, `onProgress?: UploadProgressCallback`, and
+`taskRef?: { current: FirebaseStorageTypes.Task | null }`. The
+`putFile` task subscribes to `state_changed` and forwards
+`bytesTransferred / totalBytes` as `{ phase: 'upload', percent }`; the
+`taskRef` lets the screen call `task.cancel()` from the progress
+bar's Cancel link. `mobile/components/upload/UploadProgressBar.tsx`
+renders a brand-accent fill with the phase label
+(`UPLOAD_PHASE_LABELS` in `mobile/lib/uploadProgress.ts`) and tabular
+percentage. Storage's `storage/cancelled` error is caught in the
+upload screen and surfaced as a non-modal "Upload cancelled" alert.
+
+### Success screen
+
+`mobile/app/upload/success.tsx` renders after `router.replace` from
+the upload screen with `videoId` as a search param. It loads the
+freshly-written `videos/{videoId}` doc, mounts `expo-video` muted +
+non-looping with auto-play disabled so the first frame acts as a
+poster, and renders the caption over the bottom of the frame. Two
+CTAs: **Watch your post** routes to `/posts/[uid]?start={videoId}&source=mine`,
+**Keep exploring** routes to `/(tabs)`. Reaching the screen via
+`replace` (not `push`) so the device back button doesn't return to a
+half-cleared upload form.
+
+### ToS
+
+`mobile/app/legal/terms.tsx` gained an "Audio you upload" section
+covering the spec's takedown contract: user is responsible for the
+audio they upload, must hold the necessary licenses, and takedowns go
+to `support@flytok.com`. The footer's "Last updated" bumped to
+May 2026 to match.
+
+### Rules + storage paths
+
+`firestore.rules` adds a comment block on `videos/{vid}` documenting
+the new optional audio fields and a new `tracks/{trackId}` block
+(read-only to clients, writes blocked — only the seed script bypasses
+via service-account creds). `storage.rules` gains
+`audio_library/{file=**}` (public read, no client write) and
+`audio_user/{uid}/{file=**}` (owner-only writes, public read,
+15 MB cap, `audio/*` content type, owner-delete for cleanup of
+orphaned uploads). Production rule deploy is a Roman-only step this
+session — the harness blocked the `.deploy-firestore-rules.mjs`
+production write because the user request didn't explicitly authorize
+deploying rules to prod.
+
+### Track seeding
+
+`scripts/seed-tracks.mjs` is a one-off Node script that uses
+`firebase-admin` (service account auth, mirroring `seed-feed.js`)
+to download a curated list of CC0 Pixabay Music tracks, upload each
+to `audio_library/{trackId}.mp3` in Storage, and write a
+`tracks/{trackId}` doc with title / artist / duration / category /
+license / attribution. Re-running is idempotent (Storage uploads
+overwrite, Firestore writes use `merge: true`). The default `TRACKS`
+array is a starter set — Roman should curate real Pixabay Music URLs
+before running it.
+
+### Verification
+
+- `npx tsc --noEmit` (mobile) — only the four pre-existing errors
+  remain (`app/v/[id].tsx:23`, `lib/firestore.ts:101`,
+  `lib/geocode.ts:18`, `lib/videoCache.ts:8`), all carried over from
+  W1 and unrelated to W4 scope. Wave 4 code typechecks clean.
+- **Pending**: device golden path on `0010934AE002636` — a native
+  rebuild is required for `react-native-video-trim` (Turbo/native
+  module). Roman to plug in the device, run
+  `npx expo prebuild --platform android` (NOT `--clean`) followed by
+  `npx expo run:android`. Then exercise: pick / record video → tap
+  Trim, complete the trim, confirm trimmed clip becomes the preview;
+  open the music picker, preview a library track, long-press to pick,
+  confirm Selected pill renders; switch to From device, pick an mp3,
+  confirm upload progress fills and the picker confirms; back on
+  step 2, tap Post, watch the progress bar advance through 'upload'
+  → 'finalize', land on the success screen, tap Watch your post.
+
+### Manual follow-ups for Roman (W4)
+
+1. **Native rebuild.** `npx expo prebuild --platform android` (NOT
+   `--clean`), then `npx expo run:android`. Without this the
+   `VideoTrim` native module won't be linked and `TrimButton` will
+   warn "VideoTrim native module missing" on first tap.
+2. **Production rule deploy.** From an interactive shell:
+   `GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/roamerz-b0056-firebase-adminsdk-fbsvc-9f5ef21bd1.json
+   node .deploy-firestore-rules.mjs roamerz-b0056 firestore.rules`.
+   Until that runs, `tracks/*` reads still succeed (no rule denies
+   them — the addition is read-only), but the doc-level shape is
+   undocumented at the rules layer.
+3. **Storage rule release.** Same blocker as W2 — service-account
+   auth fails on the Storage Rules release endpoint. Run
+   `firebase deploy --only storage` from an interactive shell so the
+   new `audio_library/*` and `audio_user/{uid}/*` rules go live.
+   Without this, the device-tab audio upload will hit default-deny.
+4. **Seed the music library.** `node scripts/seed-tracks.mjs`. The
+   default `TRACKS` array is a starter set — review the URLs (Pixabay
+   CDN paths sometimes shift) and replace with curated picks before
+   running. Without seeded tracks the picker's Library tab renders
+   the empty-state hint.
+5. Two-account smoke test of the upload pipeline once the rebuild +
+   deploys are live (golden path: trim + library track → success
+   screen; edge cases: device-audio upload, original audio with no
+   selection, mid-upload cancel).

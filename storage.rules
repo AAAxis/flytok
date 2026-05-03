@@ -55,6 +55,29 @@ service firebase.storage {
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
 
+    // === audio_library/{file} (W4) ===
+    // Curated CC0 tracks seeded by us. Public read for any signed-in user
+    // (the MusicPickerSheet streams previews). No client writes — the
+    // service-account-driven seed script is the only writer.
+    match /audio_library/{file=**} {
+      allow read:  if request.auth != null;
+      allow write: if false;
+    }
+
+    // === audio_user/{uid}/{file} (W4) ===
+    // User-uploaded audio attached to a video upload. Owner-only writes,
+    // public reads, capped at 15 MB, audio/* content type. Owners may
+    // delete an orphaned file if they remove the music selection before
+    // posting.
+    match /audio_user/{uid}/{file=**} {
+      allow read:   if request.auth != null;
+      allow write:  if request.auth != null
+                    && request.auth.uid == uid
+                    && request.resource.size < 15 * 1024 * 1024
+                    && request.resource.contentType.matches('audio/.*');
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
     // Default deny — anything not matched above is forbidden.
   }
 }

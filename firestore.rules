@@ -76,6 +76,14 @@ service cloud.firestore {
     }
 
     // === videos/{videoId} ===
+    // W4 added optional audio fields:
+    //   audioSource: 'library' | 'user_upload' | 'original'
+    //   audioTrackId: <tracks/{id}>          (when source == 'library')
+    //   audioUserPath: storage path string   (when source == 'user_upload')
+    // The shape is enforced client-side; the create rule below stays
+    // permissive (owner-only) since adding granular schema validation in
+    // rules language for an optional 3-field union isn't worth the brittle
+    // payload list. Reads remain unrestricted to any signed-in user.
     match /videos/{videoId} {
       allow read: if signedIn();
 
@@ -167,6 +175,15 @@ service cloud.firestore {
     // Single doc (`snapshot`) written by the `rebuildTrendingPlaces`
     // scheduled function. Same shape as places — read-only to clients.
     match /trending_places/{docId} {
+      allow read:                   if signedIn();
+      allow create, update, delete: if false;
+    }
+
+    // === tracks/{trackId} ===
+    // Curated music library — seeded by us via scripts/seed-tracks.mjs and
+    // strictly read-only to clients. The MusicPickerSheet `Library` tab reads
+    // from here.
+    match /tracks/{trackId} {
       allow read:                   if signedIn();
       allow create, update, delete: if false;
     }

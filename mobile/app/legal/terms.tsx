@@ -48,13 +48,21 @@ export default function Terms() {
             accounts that violate these terms.
           </Text>
 
+          <Text style={styles.h2}>Audio you upload</Text>
+          <Text style={styles.p}>
+            Audio you upload is your responsibility. By uploading, you confirm you have the right
+            to use it, including any necessary licenses, and that the audio doesn't infringe
+            anyone else's copyright or other rights. We honor takedown requests sent to
+            support@flytok.com — we'll review and remove infringing content as fast as we can.
+          </Text>
+
           <Text style={styles.h2}>Disclaimer</Text>
           <Text style={styles.p}>
             Roamerz is provided "as is" without warranties. We are not liable for damages arising
             from your use of the service.
           </Text>
 
-          <Text style={styles.updated}>Last updated April 2026.</Text>
+          <Text style={styles.updated}>Last updated May 2026.</Text>
         </ScrollView>
       </SafeAreaView>
     </>
