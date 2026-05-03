@@ -1,3 +1,5 @@
+/* eslint-disable react-compiler/react-compiler */
+'use no memo';
 import {
   forwardRef,
   useCallback,
@@ -80,10 +82,31 @@ export const AppBottomSheet = forwardRef<AppBottomSheetHandle, Props>(function A
   }));
 
   // Drive present/dismiss off the controlled `visible` prop so callers can keep
-  // their existing useState patterns.
+  // their existing useState patterns. Defer one frame so the BottomSheetModal
+  // has time to register with BottomSheetModalProvider before we call into it
+  // — gorhom v5's modal API only works once the provider has the ref in its
+  // map, and registration happens in the modal's mount effect.
   useEffect(() => {
-    if (visible) sheetRef.current?.present();
-    else sheetRef.current?.dismiss();
+    if (visible) {
+      try {
+        const handle = requestAnimationFrame(() => {
+          try {
+            sheetRef.current?.present();
+          } catch (err) {
+            console.warn('[AppBottomSheet] present() failed:', err);
+          }
+        });
+        return () => cancelAnimationFrame(handle);
+      } catch (err) {
+        console.warn('[AppBottomSheet] schedule present failed:', err);
+      }
+    } else {
+      try {
+        sheetRef.current?.dismiss();
+      } catch (err) {
+        console.warn('[AppBottomSheet] dismiss() failed:', err);
+      }
+    }
   }, [visible]);
 
   const resolvedSnaps = useMemo(() => {
