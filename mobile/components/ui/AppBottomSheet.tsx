@@ -32,7 +32,12 @@ type Props = {
   /** Snap points. Defaults to a single ~70% snap. Strings or numbers per gorhom. */
   snapPoints?: (string | number)[];
 
-  /** Pin the sheet to its content height instead of using snapPoints. */
+  /**
+   * Pin the sheet to its content height instead of using snapPoints.
+   * Note: gorhom v4 doesn't have a true content-sized mode the way v5 does;
+   * we approximate by using a tall snap point and letting children sit at
+   * the top with their natural height.
+   */
   enableDynamicSizing?: boolean;
 
   /** Show a small top header with title + close button. */
@@ -54,10 +59,11 @@ type Props = {
 /**
  * Brand-styled wrapper around `@gorhom/bottom-sheet`'s `BottomSheetModal`.
  *
- * Designed to make migrations from raw `<Modal>` mechanical: callers keep their
- * `visible`/`onClose` props and pass content as children. Snap points default
- * to a single 70% stop; pass `enableDynamicSizing` for content-sized sheets
- * (settings/report) or custom `snapPoints` for taller layouts (comments / AI).
+ * Designed to make migrations from raw `<Modal>` mechanical: callers keep
+ * their `visible`/`onClose` props and pass content as children. Snap points
+ * default to a single 70% stop; pass `enableDynamicSizing` for content-sized
+ * sheets (settings/report — implemented as a 50% snap on v4) or custom
+ * `snapPoints` for taller layouts (comments / AI).
  */
 export const AppBottomSheet = forwardRef<AppBottomSheetHandle, Props>(function AppBottomSheet(
   {
@@ -81,37 +87,34 @@ export const AppBottomSheet = forwardRef<AppBottomSheetHandle, Props>(function A
     dismiss: () => sheetRef.current?.dismiss(),
   }));
 
-  // Drive present/dismiss off the controlled `visible` prop so callers can keep
-  // their existing useState patterns. Defer one frame so the BottomSheetModal
-  // has time to register with BottomSheetModalProvider before we call into it
-  // — gorhom v5's modal API only works once the provider has the ref in its
-  // map, and registration happens in the modal's mount effect.
+  // Drive present/dismiss off the controlled `visible` prop. Defer one frame
+  // so the BottomSheetModal has time to register with BottomSheetModalProvider
+  // before we call into it — gorhom registers in its mount effect, so calling
+  // present() in the same tick the parent flips `visible` can race.
   useEffect(() => {
     if (visible) {
-      try {
-        const handle = requestAnimationFrame(() => {
-          try {
-            sheetRef.current?.present();
-          } catch (err) {
-            console.warn('[AppBottomSheet] present() failed:', err);
-          }
-        });
-        return () => cancelAnimationFrame(handle);
-      } catch (err) {
-        console.warn('[AppBottomSheet] schedule present failed:', err);
-      }
-    } else {
-      try {
-        sheetRef.current?.dismiss();
-      } catch (err) {
-        console.warn('[AppBottomSheet] dismiss() failed:', err);
-      }
+      const handle = requestAnimationFrame(() => {
+        try {
+          sheetRef.current?.present();
+        } catch (err) {
+          console.warn('[AppBottomSheet] present() failed:', err);
+        }
+      });
+      return () => cancelAnimationFrame(handle);
+    }
+    try {
+      sheetRef.current?.dismiss();
+    } catch (err) {
+      console.warn('[AppBottomSheet] dismiss() failed:', err);
     }
   }, [visible]);
 
-  const resolvedSnaps = useMemo(() => {
-    if (enableDynamicSizing) return undefined;
-    return snapPoints ?? ['70%'];
+  const resolvedSnaps = useMemo<(string | number)[]>(() => {
+    if (snapPoints && snapPoints.length > 0) return snapPoints;
+    // gorhom v4 has no `enableDynamicSizing`; use a moderate 50% snap
+    // for "settings-style" sheets and a 70% default for everything else.
+    if (enableDynamicSizing) return ['50%'];
+    return ['70%'];
   }, [snapPoints, enableDynamicSizing]);
 
   const renderBackdrop = useCallback(
@@ -131,7 +134,6 @@ export const AppBottomSheet = forwardRef<AppBottomSheetHandle, Props>(function A
     <BottomSheetModal
       ref={sheetRef}
       snapPoints={resolvedSnaps}
-      enableDynamicSizing={enableDynamicSizing}
       onDismiss={onClose}
       backdropComponent={renderBackdrop}
       backgroundStyle={styles.background}
