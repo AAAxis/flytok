@@ -1,18 +1,8 @@
 import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { BottomSheetView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { updateOwnVideoCaption } from '@/lib/firestore';
+import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { colors } from '@/lib/theme';
 
 export function EditCaptionSheet({
@@ -49,70 +39,45 @@ export function EditCaptionSheet({
   }
 
   return (
-    <Modal
+    <AppBottomSheet
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onClose={onClose}
+      snapPoints={['65%']}
+      title="Edit caption"
     >
-      <View style={styles.screen}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.flex}
-        >
-          <View style={styles.header}>
-            <Pressable onPress={onClose} hitSlop={12}>
-              <Text style={styles.cancel}>Cancel</Text>
-            </Pressable>
-            <Text style={styles.title}>Edit caption</Text>
-            <Pressable onPress={save} disabled={busy} hitSlop={12}>
-              {busy ? (
-                <ActivityIndicator color={colors.accent} />
-              ) : (
-                <Text style={styles.save}>Save</Text>
-              )}
-            </Pressable>
-          </View>
+      <BottomSheetView style={styles.body}>
+        <BottomSheetTextInput
+          value={caption}
+          onChangeText={setCaption}
+          placeholder="Tell people about this place… add #tags"
+          placeholderTextColor={colors.textFaint}
+          multiline
+          style={styles.input}
+          editable={!busy}
+        />
+        <Text style={styles.counter}>{caption.length}/2200</Text>
 
-          <SafeAreaView style={styles.flex} edges={['bottom']}>
-            <View style={styles.body}>
-              <TextInput
-                value={caption}
-                onChangeText={setCaption}
-                placeholder="Tell people about this place… add #tags"
-                placeholderTextColor={colors.textFaint}
-                multiline
-                style={styles.input}
-                autoFocus
-                editable={!busy}
-              />
-              <Text style={styles.counter}>{caption.length}/2200</Text>
-            </View>
-          </SafeAreaView>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
+        <View style={styles.actions}>
+          <Pressable onPress={onClose} hitSlop={8} style={styles.cancelBtn}>
+            <Text style={styles.cancelText}>Cancel</Text>
+          </Pressable>
+          <Pressable onPress={save} disabled={busy} style={styles.saveBtn}>
+            {busy ? (
+              <ActivityIndicator color={colors.bg} />
+            ) : (
+              <Text style={styles.saveText}>Save</Text>
+            )}
+          </Pressable>
+        </View>
+      </BottomSheetView>
+    </AppBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  flex: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomColor: colors.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  cancel: { color: colors.textMuted, fontSize: 14 },
-  title: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  save: { color: colors.accent, fontSize: 14, fontWeight: '600' },
   body: { padding: 16 },
   input: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bg,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 8,
@@ -124,4 +89,22 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   counter: { color: colors.textFaint, fontSize: 11, alignSelf: 'flex-end', marginTop: 4 },
+  actions: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 8,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  cancelText: { color: colors.text, fontSize: 14, fontWeight: '500' },
+  saveBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 8,
+    backgroundColor: colors.accent,
+  },
+  saveText: { color: colors.bg, fontSize: 14, fontWeight: '600' },
 });

@@ -1,19 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  BottomSheetFlatList,
+  BottomSheetTextInput,
+} from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import { askAssistant, type AiMessage } from '@/lib/aiAssistant';
+import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { colors } from '@/lib/theme';
 
 const STARTER_MESSAGE: AiMessage = {
@@ -32,7 +31,7 @@ export function AiAssistantSheet({
   const [messages, setMessages] = useState<AiMessage[]>([STARTER_MESSAGE]);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
-  const listRef = useRef<FlatList<AiMessage>>(null);
+  const listRef = useRef<any>(null);
 
   useEffect(() => {
     if (visible) {
@@ -59,111 +58,85 @@ export function AiAssistantSheet({
         ...m,
         {
           role: 'assistant',
-          content: `Hmm, I couldn’t reach the assistant. ${err?.message ?? ''}`.trim(),
+          content: `Hmm, I couldn't reach the assistant. ${err?.message ?? ''}`.trim(),
         },
       ]);
     } finally {
       setThinking(false);
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+      setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 50);
     }
   }
 
   return (
-    <Modal
+    <AppBottomSheet
       visible={visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      statusBarTranslucent
-      onRequestClose={onClose}
+      onClose={onClose}
+      snapPoints={['90%']}
     >
-      <View style={styles.sheet}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.kav}
-        >
-          <SafeAreaView edges={['top']} style={styles.topInset} />
-          <View style={styles.header}>
-            <View style={styles.titleRow}>
-              <Ionicons name="sparkles" size={16} color={colors.accent} />
-              <Text style={styles.title}>Travel assistant</Text>
-            </View>
-            <Pressable onPress={onClose} hitSlop={12}>
-              <Ionicons name="close" size={22} color={colors.textMuted} />
-            </Pressable>
-          </View>
-
-          <FlatList
-            ref={listRef}
-            data={messages}
-            keyExtractor={(_, i) => String(i)}
-            contentContainerStyle={styles.listContent}
-            keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
-              <View
-                style={[
-                  styles.bubble,
-                  item.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant,
-                ]}
-              >
-                <Text style={styles.bubbleText}>{item.content}</Text>
-              </View>
-            )}
-          />
-          {thinking && (
-            <View style={styles.thinkingRow}>
-              <ActivityIndicator size="small" color={colors.accent} />
-              <Text style={styles.thinkingText}>Thinking…</Text>
-            </View>
-          )}
-
-          <View style={styles.composer}>
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder="Ask about a place, caption, hashtag…"
-              placeholderTextColor={colors.textFaint}
-              style={styles.input}
-              editable={!thinking}
-              multiline
-              onSubmitEditing={send}
-              returnKeyType="send"
-              blurOnSubmit
-            />
-            <Pressable
-              onPress={send}
-              disabled={!input.trim() || thinking}
-              style={({ pressed }) => [
-                styles.send,
-                (!input.trim() || thinking) && styles.sendDisabled,
-                pressed && styles.sendPressed,
-              ]}
-            >
-              <Ionicons name="arrow-up" size={18} color={colors.bg} />
-            </Pressable>
-          </View>
-          <SafeAreaView edges={['bottom']} />
-        </KeyboardAvoidingView>
+      <View style={styles.header}>
+        <View style={styles.titleRow}>
+          <Ionicons name="sparkles" size={16} color={colors.accent} />
+          <Text style={styles.title}>Travel assistant</Text>
+        </View>
+        <Pressable onPress={onClose} hitSlop={12}>
+          <Ionicons name="close" size={22} color={colors.textMuted} />
+        </Pressable>
       </View>
-    </Modal>
+
+      <BottomSheetFlatList
+        ref={listRef}
+        data={messages}
+        keyExtractor={(_, i) => String(i)}
+        contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        renderItem={({ item }) => (
+          <View
+            style={[
+              styles.bubble,
+              item.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant,
+            ]}
+          >
+            <Text style={styles.bubbleText}>{item.content}</Text>
+          </View>
+        )}
+      />
+      {thinking && (
+        <View style={styles.thinkingRow}>
+          <ActivityIndicator size="small" color={colors.accent} />
+          <Text style={styles.thinkingText}>Thinking…</Text>
+        </View>
+      )}
+
+      <View style={styles.composer}>
+        <BottomSheetTextInput
+          value={input}
+          onChangeText={setInput}
+          placeholder="Ask about a place, caption, hashtag…"
+          placeholderTextColor={colors.textFaint}
+          style={styles.input}
+          editable={!thinking}
+          multiline
+          onSubmitEditing={send}
+          returnKeyType="send"
+          blurOnSubmit
+        />
+        <Pressable
+          onPress={send}
+          disabled={!input.trim() || thinking}
+          style={({ pressed }) => [
+            styles.send,
+            (!input.trim() || thinking) && styles.sendDisabled,
+            pressed && styles.sendPressed,
+          ]}
+        >
+          <Ionicons name="arrow-up" size={18} color={colors.bg} />
+        </Pressable>
+      </View>
+    </AppBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  kav: { flex: 1, backgroundColor: colors.bg },
-  sheet: { flex: 1, backgroundColor: colors.bg },
-  topInset: {
-    // Hardcoded fallback for iOS notch in case SafeAreaView returns 0 inside
-    // the Modal scene (no SafeAreaProvider in this tree).
-    minHeight: Platform.OS === 'ios' ? 50 : 24,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.borderAlt,
-    alignSelf: 'center',
-    marginTop: 8,
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

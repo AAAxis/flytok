@@ -11,7 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
   diagnoseSaves,
@@ -38,6 +38,7 @@ type Tab = 'mine' | 'saved';
 export default function Profile() {
   const router = useRouter();
   const me = auth().currentUser;
+  const insets = useSafeAreaInsets();
   const cached = me ? getCachedProfile(me.uid) : null;
   const [displayName, setDisplayName] = useState<string | null>(cached?.displayName ?? null);
   const [photoURL, setPhotoURL] = useState<string | null>(cached?.photoURL ?? null);
@@ -194,7 +195,7 @@ export default function Profile() {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 60 }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
         }
@@ -345,7 +346,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   handle: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  content: { paddingBottom: 60 },
+  content: {},
   loading: { paddingVertical: 60, alignItems: 'center' },
   headerArea: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 12, paddingBottom: 16 },
   avatarWrap: { position: 'relative' },

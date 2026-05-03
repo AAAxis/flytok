@@ -215,7 +215,13 @@ export async function updateProfile({
 }) {
   const user = requireUser();
   const update: Record<string, unknown> = {};
-  if (displayName !== undefined) update.displayName = displayName.trim() || null;
+  if (displayName !== undefined) {
+    const trimmed = displayName.trim();
+    update.displayName = trimmed || null;
+    // Maintain the denormalised lowercase copy so prefix searches (search
+    // screen, DM picker) stay in sync with profile edits.
+    update.displayNameLower = trimmed ? trimmed.toLowerCase() : null;
+  }
   if (bio !== undefined) update.bio = bio.trim() || null;
   if (Object.keys(update).length === 0) return;
   await usersCol().doc(user.uid).set(update, { merge: true });
@@ -380,16 +386,29 @@ export async function getUserLabel(uid: string): Promise<string> {
 
 export async function ensureUserDoc() {
   const u = requireUser();
-  await usersCol().doc(u.uid).set(
-    {
-      uid: u.uid,
-      email: u.email ?? null,
-      displayName: u.displayName ?? null,
-      photoURL: u.photoURL ?? null,
-      lastSeenAt: firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
+  // Read first so we can backfill defaults (discoverable) for accounts created
+  // before W1 without overriding a deliberate opt-out from a later session.
+  const ref = usersCol().doc(u.uid);
+  const existing = await ref.get().catch(() => null);
+  const data = existing?.data() ?? {};
+
+  const trimmedName = (u.displayName ?? '').trim();
+  const update: Record<string, unknown> = {
+    uid: u.uid,
+    email: u.email ?? null,
+    displayName: u.displayName ?? null,
+    photoURL: u.photoURL ?? null,
+    displayNameLower: trimmedName ? trimmedName.toLowerCase() : null,
+    lastSeenAt: firestore.FieldValue.serverTimestamp(),
+  };
+
+  // Default `discoverable` to true on first sign-in / for legacy users that
+  // don't have it yet. Don't clobber an explicit setting from a later wave.
+  if (data.discoverable === undefined) {
+    update.discoverable = true;
+  }
+
+  await ref.set(update, { merge: true });
 }
 
 export async function uploadVideo({

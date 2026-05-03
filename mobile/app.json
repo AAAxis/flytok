@@ -38,12 +38,7 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_MEDIA_IMAGES"
-      ],
-      "config": {
-        "googleMaps": {
-          "apiKey": "AIzaSyAHrNyLrlx87KWW5YHYfv_sOqVFNgtjvzU"
-        }
-      }
+      ]
     },
     "web": {
       "output": "static",
@@ -51,6 +46,7 @@
     },
     "plugins": [
       "./plugins/withAndroidLargeHeap.js",
+      "./plugins/withGoogleMapsApiKey.js",
       "expo-router",
       [
         "expo-splash-screen",

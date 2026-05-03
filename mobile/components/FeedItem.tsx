@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import { Alert, Dimensions, Image, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, type VideoPlayer } from 'expo-video';
@@ -34,6 +35,10 @@ export function FeedItem({
   onBlocked?: (uid: string) => void;
 }) {
   const me = auth().currentUser;
+  const insets = useSafeAreaInsets();
+  // Overlay must clear the tab bar (~56dp) plus the system gesture inset on
+  // Android edge-to-edge devices. iOS picks up its home-indicator the same way.
+  const overlayBottom = Math.max(96, insets.bottom + 64);
   const [commentCount, setCommentCount] = useState(0);
   const [following, setFollowing] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -264,7 +269,10 @@ export function FeedItem({
         </View>
       </View>
 
-      <View style={styles.overlay} pointerEvents="box-none">
+      <View
+        style={[styles.overlay, { paddingBottom: overlayBottom }]}
+        pointerEvents="box-none"
+      >
         <View style={styles.bottomLeft}>
           <View style={styles.authorRow}>
             <Pressable
@@ -459,7 +467,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingBottom: 96,
     paddingHorizontal: 16,
   },
   bottomLeft: { flex: 1, gap: 6, marginRight: 12 },

@@ -2,6 +2,8 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { ActivityIndicator, AppState, Platform, StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import messaging, {
   FirebaseMessagingTypes,
 } from '@react-native-firebase/messaging';
@@ -123,13 +125,18 @@ function Gate() {
 export default function RootLayout() {
   useTrackingPrompt();
   return (
-    <AuthProvider>
-      <Gate />
-      <StatusBar style="light" />
-    </AuthProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <BottomSheetModalProvider>
+        <AuthProvider>
+          <Gate />
+          <StatusBar style="light" />
+        </AuthProvider>
+      </BottomSheetModalProvider>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
 });

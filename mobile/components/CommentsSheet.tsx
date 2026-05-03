@@ -1,19 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
-  ActivityIndicator,
-  FlatList,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+  BottomSheetFlatList,
+  BottomSheetTextInput,
+} from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import { commentsCol, getCachedUserLabel, getUserLabel, postComment, type CommentDoc } from '@/lib/firestore';
+import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { colors } from '@/lib/theme';
 
 export function CommentsSheet({
@@ -28,7 +21,6 @@ export function CommentsSheet({
   const [comments, setComments] = useState<CommentDoc[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -57,65 +49,50 @@ export function CommentsSheet({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.kav}
-      >
-        <Pressable style={styles.backdrop} onPress={onClose} />
-        <SafeAreaView style={styles.sheet} edges={['bottom']}>
-          <View style={styles.handle} />
-          <View style={styles.header}>
-            <Text style={styles.title}>Comments</Text>
-            <Pressable onPress={onClose} hitSlop={12}>
-              <Ionicons name="close" size={22} color={colors.textMuted} />
-            </Pressable>
-          </View>
+    <AppBottomSheet
+      visible={visible}
+      onClose={onClose}
+      snapPoints={['70%']}
+      title="Comments"
+    >
+      <BottomSheetFlatList
+        data={comments}
+        keyExtractor={(c) => c.id}
+        contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        renderItem={({ item }) => <CommentRow comment={item} />}
+        ListEmptyComponent={
+          <Text style={styles.empty}>Be the first to comment</Text>
+        }
+      />
 
-          <FlatList
-            data={comments}
-            keyExtractor={(c) => c.id}
-            style={styles.list}
-            contentContainerStyle={styles.listContent}
-            keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
-              <CommentRow comment={item} />
-            )}
-            ListEmptyComponent={
-              <Text style={styles.empty}>Be the first to comment</Text>
-            }
-          />
-
-          <View style={styles.composer}>
-            <TextInput
-              ref={inputRef}
-              value={text}
-              onChangeText={setText}
-              placeholder="Add a comment…"
-              placeholderTextColor={colors.textFaint}
-              style={styles.input}
-              editable={!sending}
-              multiline
-            />
-            <Pressable
-              onPress={handleSend}
-              disabled={!text.trim() || sending}
-              style={({ pressed }) => [
-                styles.send,
-                (!text.trim() || sending) && styles.sendDisabled,
-                pressed && styles.sendPressed,
-              ]}
-            >
-              {sending ? (
-                <ActivityIndicator color={colors.bg} size="small" />
-              ) : (
-                <Ionicons name="arrow-up" size={18} color={colors.bg} />
-              )}
-            </Pressable>
-          </View>
-        </SafeAreaView>
-      </KeyboardAvoidingView>
-    </Modal>
+      <View style={styles.composer}>
+        <BottomSheetTextInput
+          value={text}
+          onChangeText={setText}
+          placeholder="Add a comment…"
+          placeholderTextColor={colors.textFaint}
+          style={styles.input}
+          editable={!sending}
+          multiline
+        />
+        <Pressable
+          onPress={handleSend}
+          disabled={!text.trim() || sending}
+          style={({ pressed }) => [
+            styles.send,
+            (!text.trim() || sending) && styles.sendDisabled,
+            pressed && styles.sendPressed,
+          ]}
+        >
+          {sending ? (
+            <ActivityIndicator color={colors.bg} size="small" />
+          ) : (
+            <Ionicons name="arrow-up" size={18} color={colors.bg} />
+          )}
+        </Pressable>
+      </View>
+    </AppBottomSheet>
   );
 }
 
@@ -140,33 +117,6 @@ function CommentRow({ comment }: { comment: CommentDoc }) {
 }
 
 const styles = StyleSheet.create({
-  kav: { flex: 1 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    maxHeight: '70%',
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.borderAlt,
-    alignSelf: 'center',
-    marginTop: 8,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomColor: colors.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  title: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  list: { maxHeight: 360 },
   listContent: { padding: 16, gap: 12 },
   commentRow: { gap: 2 },
   author: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },

@@ -56,10 +56,12 @@ Each wave is one session. Mark `[x]` after completion. Each wave ends
 with: device test on `0010934AE002636`, single commit to `main`, log
 entry in `docs/log.md`.
 
-- [ ] **Wave 1 — Foundation & quick fixes** — `docs/04-wave-1-foundation.md`
+- [x] **Wave 1 — Foundation & quick fixes** — `docs/04-wave-1-foundation.md`
       Sheet migration to `@gorhom/bottom-sheet`, Android big-screen
       layout audit, DM picker fix (follows + global handle search),
-      Google Maps API key wiring.
+      Google Maps API key wiring. *(Code shipped 2026-05-03 — device
+      golden path on `0010934AE002636` still pending Roman's re-attach;
+      see `docs/log.md` Wave 1 section for follow-ups.)*
 
 - [ ] **Wave 2 — Map redesign + Profile customization** — `docs/05-wave-2-map-profile.md`
       Marker clustering, place card, Apple Maps iOS / Google Maps

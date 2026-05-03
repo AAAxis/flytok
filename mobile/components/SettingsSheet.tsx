@@ -1,9 +1,10 @@
-import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { BottomSheetView } from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/AuthContext';
 import { deleteAccount } from '@/lib/firestore';
+import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { colors } from '@/lib/theme';
 
 export function SettingsSheet({
@@ -47,17 +48,8 @@ export function SettingsSheet({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <SafeAreaView style={styles.sheet} edges={['bottom']}>
-        <View style={styles.handle} />
-        <View style={styles.header}>
-          <Text style={styles.title}>Settings</Text>
-          <Pressable onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={22} color={colors.textMuted} />
-          </Pressable>
-        </View>
-
+    <AppBottomSheet visible={visible} onClose={onClose} enableDynamicSizing title="Settings">
+      <BottomSheetView style={styles.content}>
         <Section>
           <Row icon="person-circle-outline" label="Edit profile" onPress={onEditProfile} />
         </Section>
@@ -97,8 +89,8 @@ export function SettingsSheet({
             destructive
           />
         </Section>
-      </SafeAreaView>
-    </Modal>
+      </BottomSheetView>
+    </AppBottomSheet>
   );
 }
 
@@ -141,29 +133,7 @@ function Row({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingBottom: 16,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.borderAlt,
-    alignSelf: 'center',
-    marginTop: 8,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  title: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  content: { paddingBottom: 24 },
   section: { paddingHorizontal: 12, marginTop: 8 },
   sectionTitle: {
     color: colors.textDim,

@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -29,6 +29,7 @@ export default function UserProfile() {
   const { uid } = useLocalSearchParams<{ uid: string }>();
   const me = auth().currentUser;
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const profile = useUserProfile(uid);
   const handle = useUserLabel(uid);
 
@@ -112,7 +113,7 @@ export default function UserProfile() {
         }}
       />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 60 }]}>
         <View style={styles.headerArea}>
           {profile?.photoURL ? (
             <Image source={{ uri: profile.photoURL }} style={styles.avatarImage} />
@@ -221,7 +222,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   empty: { color: colors.textDim, fontSize: 13 },
-  content: { paddingBottom: 60 },
+  content: {},
   headerArea: {
     alignItems: 'center',
     paddingHorizontal: 24,

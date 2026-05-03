@@ -1,21 +1,19 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Image,
-  Modal,
-  Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import {
   followersCol,
   followingCol,
   usersCol,
 } from '@/lib/firestore';
+import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { colors } from '@/lib/theme';
 
 type Mode = 'following' | 'followers';
@@ -60,7 +58,6 @@ export function FollowListSheet({
           }
           return;
         }
-        // Fetch user profile docs in chunks of 10 (Firestore "in" cap).
         const chunks: string[][] = [];
         for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
 
@@ -96,36 +93,30 @@ export function FollowListSheet({
   }, [visible, uid, mode]);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <SafeAreaView style={styles.sheet} edges={['bottom']}>
-        <View style={styles.handle} />
-        <View style={styles.header}>
-          <Text style={styles.title}>{mode === 'following' ? 'Following' : 'Followers'}</Text>
-          <Pressable onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={22} color={colors.textMuted} />
-          </Pressable>
+    <AppBottomSheet
+      visible={visible}
+      onClose={onClose}
+      snapPoints={['75%']}
+      title={mode === 'following' ? 'Following' : 'Followers'}
+    >
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.accent} />
         </View>
-
-        {loading ? (
-          <View style={styles.center}>
-            <ActivityIndicator color={colors.accent} />
-          </View>
-        ) : (
-          <FlatList
-            data={rows}
-            keyExtractor={(r) => r.uid}
-            contentContainerStyle={styles.list}
-            renderItem={({ item }) => <UserRow row={item} />}
-            ListEmptyComponent={
-              <Text style={styles.empty}>
-                {mode === 'following' ? 'Not following anyone yet.' : 'No followers yet.'}
-              </Text>
-            }
-          />
-        )}
-      </SafeAreaView>
-    </Modal>
+      ) : (
+        <BottomSheetFlatList
+          data={rows}
+          keyExtractor={(r) => r.uid}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => <UserRow row={item} />}
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              {mode === 'following' ? 'Not following anyone yet.' : 'No followers yet.'}
+            </Text>
+          }
+        />
+      )}
+    </AppBottomSheet>
   );
 }
 
@@ -151,32 +142,6 @@ function UserRow({ row }: { row: Row }) {
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    maxHeight: '75%',
-    minHeight: '40%',
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.borderAlt,
-    alignSelf: 'center',
-    marginTop: 8,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomColor: colors.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  title: { color: colors.text, fontSize: 15, fontWeight: '600' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 32 },
   list: { padding: 8 },
   row: {

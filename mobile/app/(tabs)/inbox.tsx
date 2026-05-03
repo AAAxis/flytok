@@ -3,14 +3,17 @@ import auth from '@react-native-firebase/auth';
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
+  Image,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  BottomSheetFlatList,
+  BottomSheetTextInput,
+} from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
@@ -18,16 +21,21 @@ import {
   useThreadList,
   type ThreadDoc,
 } from '@/lib/messaging';
-import { getBlockedIds, getUserLabel, usersCol } from '@/lib/firestore';
+import { getBlockedIds, getUserLabel } from '@/lib/firestore';
+import {
+  getFollowedUserProfiles,
+  searchUsersByHandle,
+  type UserDoc,
+} from '@/lib/users';
 import { ensureNotificationPermission } from '@/lib/notifications';
 import { ThreadRow } from '@/components/messaging/ThreadRow';
+import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { colors } from '@/lib/theme';
-
-type UserDoc = { uid: string; email: string | null; displayName: string | null };
 
 export default function Inbox() {
   const me = auth().currentUser;
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { threads, loading } = useThreadList();
   const [showNew, setShowNew] = useState(false);
   const [blocked, setBlocked] = useState<Set<string>>(new Set());
@@ -50,8 +58,10 @@ export default function Inbox() {
 
   const filteredThreads = useMemo(() => {
     if (!me) return [];
-    if (blocked.size === 0) return threads;
     return threads.filter((t) => {
+      // Defensive: skip docs without a `participants` array (corrupted writes).
+      if (!Array.isArray(t.participants)) return false;
+      if (blocked.size === 0) return true;
       const otherUid = t.participants.find((p) => p !== me.uid);
       return otherUid ? !blocked.has(otherUid) : true;
     });
@@ -63,8 +73,8 @@ export default function Inbox() {
     const otherUids = Array.from(
       new Set(
         filteredThreads
-          .map((t) => t.participants.find((p) => p !== me.uid))
-          .filter((u): u is string => Boolean(u)),
+          .map((t) => t.participants?.find((p) => p !== me.uid))
+          .filter((u): u is string => typeof u === 'string' && u.length > 0),
       ),
     );
     if (otherUids.length === 0) return;
@@ -81,7 +91,7 @@ export default function Inbox() {
 
   function otherLabel(t: ThreadDoc): string {
     if (!me) return '';
-    const otherUid = t.participants.find((p) => p !== me.uid);
+    const otherUid = t.participants?.find((p) => p !== me.uid);
     if (!otherUid) return '';
     return labels[otherUid] ?? `User ${otherUid.slice(0, 6)}`;
   }
@@ -103,7 +113,7 @@ export default function Inbox() {
         <FlatList
           data={filteredThreads}
           keyExtractor={(t) => t.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 60 }]}
           renderItem={({ item }) =>
             me ? (
               <ThreadRow
@@ -122,7 +132,7 @@ export default function Inbox() {
         />
       )}
 
-      <NewChatModal
+      <NewChatSheet
         visible={showNew}
         blocked={blocked}
         onClose={() => setShowNew(false)}
@@ -131,7 +141,7 @@ export default function Inbox() {
   );
 }
 
-function NewChatModal({
+function NewChatSheet({
   visible,
   blocked,
   onClose,
@@ -142,31 +152,62 @@ function NewChatModal({
 }) {
   const me = auth().currentUser;
   const router = useRouter();
-  const [users, setUsers] = useState<UserDoc[]>([]);
-  const [filter, setFilter] = useState('');
+  const [follows, setFollows] = useState<UserDoc[]>([]);
+  const [followsLoading, setFollowsLoading] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<UserDoc[]>([]);
+  const [searching, setSearching] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
+  // Load follows the first time the sheet opens (and refresh whenever blocked
+  // set changes so blocked users disappear immediately after blocking).
   useEffect(() => {
     if (!visible) return;
-    usersCol()
-      .limit(100)
-      .get()
-      .then((snap) => {
-        setUsers(
-          snap.docs
-            .map((d) => {
-              const data = d.data();
-              return {
-                uid: d.id,
-                email: (data.email as string | null) ?? null,
-                displayName: (data.displayName as string | null) ?? null,
-              };
-            })
-            .filter((u) => u.uid !== me?.uid && !blocked.has(u.uid)),
-        );
+    let cancelled = false;
+    setFollowsLoading(true);
+    getFollowedUserProfiles({ limit: 200 })
+      .then((users) => {
+        if (cancelled) return;
+        setFollows(users.filter((u) => u.uid !== me?.uid && !blocked.has(u.uid)));
       })
-      .catch(() => setUsers([]));
+      .catch(() => setFollows([]))
+      .finally(() => {
+        if (!cancelled) setFollowsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [visible, me, blocked]);
+
+  // Debounced handle search. <2 chars clears results to fall back to follows.
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const handle = setTimeout(() => {
+      searchUsersByHandle(trimmed, { limit: 25, excludeUid: me?.uid })
+        .then((users) => {
+          if (cancelled) return;
+          setResults(users.filter((u) => !blocked.has(u.uid)));
+        })
+        .catch((err) => {
+          console.warn('[new-chat] search failed:', err);
+          if (!cancelled) setResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [query, me, blocked]);
 
   async function open(u: UserDoc) {
     setBusy(u.uid);
@@ -179,55 +220,103 @@ function NewChatModal({
     }
   }
 
-  const filtered = filter
-    ? users.filter((u) =>
-        (u.displayName ?? '').toLowerCase().includes(filter.toLowerCase()),
-      )
-    : users;
+  const isSearching = query.trim().length >= 2;
+  const data = isSearching ? results : follows;
+  const showLoading = isSearching ? searching : followsLoading;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <SafeAreaView style={styles.sheet} edges={['bottom']}>
-        <View style={styles.handle} />
-        <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>New message</Text>
-          <Pressable onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={22} color={colors.textMuted} />
-          </Pressable>
-        </View>
-        <TextInput
-          value={filter}
-          onChangeText={setFilter}
-          placeholder="Search by name…"
+    <AppBottomSheet
+      visible={visible}
+      onClose={onClose}
+      snapPoints={['85%']}
+      title="New message"
+    >
+      <View style={styles.searchRow}>
+        <Ionicons name="search" size={16} color={colors.textMuted} />
+        <BottomSheetTextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search by name or handle (min 2)"
           placeholderTextColor={colors.textFaint}
           autoCapitalize="none"
-          style={styles.search}
+          autoCorrect={false}
+          style={styles.searchInput}
+          returnKeyType="search"
         />
-        <FlatList
-          data={filtered}
+        {query.length > 0 && (
+          <Pressable onPress={() => setQuery('')} hitSlop={8}>
+            <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+          </Pressable>
+        )}
+      </View>
+
+      <Text style={styles.sectionLabel}>
+        {isSearching ? 'Search results' : 'People you follow'}
+      </Text>
+
+      {showLoading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.accent} />
+        </View>
+      ) : (
+        <BottomSheetFlatList
+          data={data}
           keyExtractor={(u) => u.uid}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={styles.sheetList}
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => (
-            <Pressable
+            <UserPickerRow
+              user={item}
+              busy={busy === item.uid}
               onPress={() => open(item)}
-              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-            >
-              <View style={styles.avatar}>
-                <Ionicons name="person" size={20} color={colors.text} />
-              </View>
-              <View style={styles.rowText}>
-                <Text style={styles.name}>
-                  {item.displayName ?? `User ${item.uid.slice(0, 6)}`}
-                </Text>
-              </View>
-              {busy === item.uid && <ActivityIndicator color={colors.accent} />}
-            </Pressable>
+            />
           )}
-          ListEmptyComponent={<Text style={styles.empty}>No users to show</Text>}
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              {isSearching
+                ? 'No discoverable users matched.'
+                : 'Follow people to start chats with them — or search above.'}
+            </Text>
+          }
         />
-      </SafeAreaView>
-    </Modal>
+      )}
+    </AppBottomSheet>
+  );
+}
+
+function UserPickerRow({
+  user,
+  busy,
+  onPress,
+}: {
+  user: UserDoc;
+  busy: boolean;
+  onPress: () => void;
+}) {
+  const label =
+    user.displayName?.trim() ||
+    user.username?.trim() ||
+    `User ${user.uid.slice(0, 6)}`;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+    >
+      {user.photoURL ? (
+        <Image source={{ uri: user.photoURL }} style={styles.avatar} />
+      ) : (
+        <View style={[styles.avatar, styles.avatarFallback]}>
+          <Ionicons name="person" size={20} color={colors.text} />
+        </View>
+      )}
+      <View style={styles.rowText}>
+        <Text style={styles.name} numberOfLines={1}>{label}</Text>
+        {user.username ? (
+          <Text style={styles.handle} numberOfLines={1}>@{user.username}</Text>
+        ) : null}
+      </View>
+      {busy && <ActivityIndicator color={colors.accent} />}
+    </Pressable>
   );
 }
 
@@ -242,61 +331,54 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   title: { color: colors.text, fontSize: 24, fontWeight: '700' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  list: { paddingHorizontal: 8, paddingBottom: 16 },
-  row: {
+  center: { paddingVertical: 32, alignItems: 'center', justifyContent: 'center' },
+  list: { paddingHorizontal: 8 },
+  sheetList: { paddingHorizontal: 8, paddingBottom: 24 },
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  rowPressed: { backgroundColor: colors.surface },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.surfaceAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rowText: { flex: 1 },
-  name: { color: colors.text, fontSize: 14, fontWeight: '500' },
-  empty: { color: colors.textDim, fontSize: 13, textAlign: 'center', padding: 24 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    maxHeight: '80%',
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.borderAlt,
-    alignSelf: 'center',
-    marginTop: 8,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  sheetTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  search: {
+    gap: 8,
     marginHorizontal: 16,
-    marginBottom: 8,
+    marginTop: 8,
     backgroundColor: colors.bg,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+  },
+  searchInput: {
+    flex: 1,
     color: colors.text,
     fontSize: 14,
+    paddingVertical: 10,
   },
+  sectionLabel: {
+    color: colors.textDim,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 6,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  rowPressed: { backgroundColor: colors.surfaceAlt },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.surfaceAlt,
+  },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  rowText: { flex: 1, minWidth: 0 },
+  name: { color: colors.text, fontSize: 14, fontWeight: '500' },
+  handle: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  empty: { color: colors.textDim, fontSize: 13, textAlign: 'center', padding: 24 },
 });

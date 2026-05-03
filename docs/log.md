@@ -144,3 +144,151 @@ bounded by the pool size and the 8 MB-per-slot buffer cap.
    delivery function needs interactive `firebase login` to ship.
 3. Two-account smoke test of DMs (text + image + soft-delete + push) on
    `0010934AE002636` once the function is live.
+
+## 2026-05-03 — Wave 1 (foundation & quick fixes)
+
+Spec: `docs/04-wave-1-foundation.md`. All acceptance criteria implemented;
+on-device verification still pending — the connected Android target
+`0010934AE002636` was not attached during this session (`adb devices`
+returned empty), so Roman needs to run a clean build and exercise the
+golden path before marking the wave fully shipped.
+
+### Bottom-sheet primitive
+
+Installed `@gorhom/bottom-sheet@^5.2.13` plus its required peer
+`react-native-reanimated@~4.1.1` (Reanimated v4 ships its babel plugin
+via `react-native-worklets/plugin`, auto-applied by `babel-preset-expo`
+SDK 54). Wrapped the root tree in `GestureHandlerRootView` +
+`BottomSheetModalProvider` in `mobile/app/_layout.tsx` so any sheet can
+render through the modal portal.
+
+New shared wrapper at `mobile/components/ui/AppBottomSheet.tsx` —
+controlled `visible`/`onClose` API to keep migrations mechanical, brand
+colors baked in, optional `title` header, optional dynamic sizing,
+keyboard-aware (`keyboardBehavior: 'interactive'` +
+`android_keyboardInputMode: 'adjustResize'`), pan-down-to-close, animated
+backdrop. Reused by all 8 sheets:
+
+- `CommentsSheet`, `SettingsSheet`, `EditProfileSheet`,
+  `EditCaptionSheet`, `FollowListSheet`, `ReportSheet`,
+  `ShareToChatSheet`, `AiAssistantSheet`.
+
+`BottomSheetTextInput` swapped in for any composer/search/note input that
+needs the sheet to follow the keyboard. `BottomSheetFlatList` /
+`BottomSheetScrollView` / `BottomSheetView` used per content type so the
+sheet's pan gesture cooperates with inner scroll.
+
+### DM picker
+
+`mobile/lib/users.ts` is new — exports `searchUsersByHandle(query, opts)`
+(prefix range on `displayNameLower` filtered by `discoverable === true`)
+and `getFollowedUserProfiles(opts)` (resolves the caller's
+`/users/{me}/following/*` ids to user docs). Both reused by W3 search +
+W4 DM expansion.
+
+Inbox `NewChatSheet` (formerly `NewChatModal`) now lives inside
+`AppBottomSheet`. Default state shows the people you follow with avatars
+(or person-glyph fallback). Search box (≥2 chars, 250 ms debounce) flips
+to global discoverable-handle search. Loading + empty states distinct
+per mode. Old picker that listed every user in the database is gone.
+
+### `ensureUserDoc` + `displayNameLower`
+
+`mobile/lib/firestore.ts:ensureUserDoc` now reads first then writes:
+maintains `displayNameLower` (lowercase trim of `displayName`) on every
+sign-in, defaults `discoverable: true` only when the field is absent so
+later opt-outs aren't clobbered. `updateProfile` mirrors
+`displayNameLower` whenever `displayName` is touched.
+
+A composite index on `(displayNameLower asc, discoverable asc)` is
+declared at the new `firestore.indexes.json`. `searchUsersByHandle` will
+fail loudly the first time it runs — Firebase prints a one-click create
+URL in the error; alternatively run
+`firebase deploy --only firestore:indexes` from an interactive shell.
+
+### Firestore rules
+
+`firestore.rules` already permits self-write of any field on `/users/{uid}`
+via `isSelf(uid) || isAdmin()`, so no rule change was strictly required
+for `discoverable` / `displayNameLower`. Added a header comment
+documenting the new self-writable fields and re-deployed the ruleset
+(`fa5cb462-2456-40fa-bf4a-961b47e8b238`) via the service-account script
+just to keep the Cloud-side ruleset history in sync with the documented
+policy.
+
+### Inset audit
+
+Replaced overlay/contentContainer hardcoded paddings with safe-area
+insets:
+
+- `components/FeedItem.tsx` — overlay `paddingBottom` now
+  `Math.max(96, insets.bottom + 64)`, so the actions column clears the
+  Android edge-to-edge gesture area without losing the iOS notch
+  treatment.
+- `app/(tabs)/profile.tsx` — `ScrollView` content padding now
+  `insets.bottom + 60`.
+- `app/(tabs)/inbox.tsx` — `FlatList` content padding now
+  `insets.bottom + 60` so the last thread row clears the tab bar.
+- `app/user/[uid].tsx` — same `insets.bottom + 60` treatment for the
+  visiting-profile screen.
+
+The migrated bottom sheets pick up insets internally through
+`BottomSheetModalProvider`, so `paddingBottom` hardcodes inside the old
+sheet styles are gone.
+
+### Inbox console error defenses
+
+Hardened the inbox thread filter + label resolver against malformed
+thread docs (missing `participants` array, undefined other-uid).
+`Array.isArray(t.participants)` skips corrupted writes; the label
+collector filters undefined/empty uids before calling `getUserLabel`.
+The previous `usersCol().limit(100).get()` on every modal open is gone
+— that scan was also where the picker's "showed strangers" bug came
+from.
+
+### Google Maps API key
+
+New `mobile/plugins/withGoogleMapsApiKey.js` config plugin — reads
+`GOOGLE_MAPS_API_KEY` from `process.env` at prebuild time, injects
+`<meta-data android:name="com.google.android.geo.API_KEY">` into the
+Android manifest, throws a clear error if the env var is missing
+(per global rule against silent defaults). Registered in `app.json`.
+
+The previous hardcoded key (under `android.config.googleMaps.apiKey` in
+`app.json`) was deleted; the value moved to `mobile/.env` (git-ignored
+via the root `.gitignore`'s `.env` rule). `mobile/.env.example`
+documents the variable with no value.
+
+Verified the plugin via `npx expo prebuild --platform android
+--no-install`: env loaded, prebuild succeeded, the resulting
+`AndroidManifest.xml` contains the expected `<meta-data>` entry
+alongside the existing `largeHeap="true"` flag.
+
+### Verification
+
+- `npx tsc --noEmit` — no new errors. Four pre-existing errors remain
+  (`app/v/[id].tsx:23`, `lib/firestore.ts:98`, `lib/geocode.ts:18`,
+  `lib/videoCache.ts:8`), all unrelated to W1 scope and carried over
+  from session 2.
+- Prebuild succeeded; manifest contains the injected Maps API key.
+- Firestore rules redeployed, ruleset
+  `fa5cb462-2456-40fa-bf4a-961b47e8b238` is live.
+- **Pending**: device golden path on `0010934AE002636` — sheets, DM
+  picker (follows + handle search), Map renders Google tiles. Roman to
+  re-attach the device, run `npx expo run:android`, and confirm.
+
+### Manual follow-ups for Roman (W1)
+
+1. Plug in `0010934AE002636` and run `npx expo run:android` to validate
+   the golden path. Open every sheet (comments, settings, edit profile,
+   edit caption, follow list, report, share-to-chat, AI assistant,
+   new-chat), confirm pan-down-to-close + keyboard handling, and check
+   Google tiles render on the Map tab.
+2. Two-account DM picker smoke test: account A follows B; open inbox →
+   "+" → see only B; type 2+ chars in search and confirm a third
+   discoverable user appears.
+3. The composite index for the search query is declared in
+   `firestore.indexes.json` but not pushed by `.deploy-firestore-rules.mjs`.
+   Either run `firebase deploy --only firestore:indexes` from an
+   interactive shell or follow the one-click create URL Firebase prints
+   on the first failed search.

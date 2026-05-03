@@ -26,6 +26,10 @@ service cloud.firestore {
     // Public profiles: any signed-in user can read so feeds, inbox, mentions,
     // and the new-chat picker can resolve display names. Only the user
     // themselves (or an admin) can write.
+    //
+    // Self-writable fields (W1+): displayName, displayNameLower (denormalised
+    // for prefix search), photoURL, bio, discoverable (default true; opt-out
+    // hides the user from global handle search), email, lastSeenAt.
     match /users/{uid} {
       allow read:           if signedIn();
       allow create, update: if isSelf(uid) || isAdmin();

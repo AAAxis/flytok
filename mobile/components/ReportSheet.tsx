@@ -2,14 +2,12 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { BottomSheetView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
 import {
   blockUser,
@@ -17,6 +15,7 @@ import {
   type ReportReason,
   type ReportTarget,
 } from '@/lib/firestore';
+import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { colors } from '@/lib/theme';
 
 const REASONS: { id: ReportReason; label: string }[] = [
@@ -81,17 +80,13 @@ export function ReportSheet({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <SafeAreaView style={styles.sheet} edges={['bottom']}>
-        <View style={styles.handle} />
-        <View style={styles.header}>
-          <Text style={styles.title}>Report</Text>
-          <Pressable onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={22} color={colors.textMuted} />
-          </Pressable>
-        </View>
-
+    <AppBottomSheet
+      visible={visible}
+      onClose={onClose}
+      enableDynamicSizing
+      title="Report"
+    >
+      <BottomSheetView style={styles.body}>
         <Text style={styles.sectionLabel}>Why are you reporting this?</Text>
         <View style={styles.reasons}>
           {REASONS.map((r) => (
@@ -113,7 +108,7 @@ export function ReportSheet({
         </View>
 
         {reason === 'other' && (
-          <TextInput
+          <BottomSheetTextInput
             value={note}
             onChangeText={setNote}
             placeholder="Tell us what's wrong"
@@ -153,35 +148,13 @@ export function ReportSheet({
             )}
           </Pressable>
         )}
-      </SafeAreaView>
-    </Modal>
+      </BottomSheetView>
+    </AppBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingBottom: 12,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.borderAlt,
-    alignSelf: 'center',
-    marginTop: 8,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  title: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  body: { paddingBottom: 24 },
   sectionLabel: {
     color: colors.textMuted,
     fontSize: 12,
