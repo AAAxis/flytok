@@ -7,6 +7,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { commentsCol, getCachedUserLabel, getUserLabel, postComment, type CommentDoc } from '@/lib/firestore';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
+import { useBlockedSet } from '@/lib/blockSet';
 import { colors } from '@/lib/theme';
 
 export function CommentsSheet({
@@ -21,6 +22,7 @@ export function CommentsSheet({
   const [comments, setComments] = useState<CommentDoc[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const { set: blockedSet } = useBlockedSet();
 
   useEffect(() => {
     if (!visible) return;
@@ -36,6 +38,10 @@ export function CommentsSheet({
       );
     return unsub;
   }, [videoId, visible]);
+
+  // Drop comments authored by users the viewer has blocked. Re-applied as a
+  // .filter on render so live block changes immediately collapse old rows.
+  const visibleComments = comments.filter((c) => !blockedSet.has(c.authorId));
 
   async function handleSend() {
     if (!text.trim()) return;
@@ -56,7 +62,7 @@ export function CommentsSheet({
       title="Comments"
     >
       <BottomSheetFlatList
-        data={comments}
+        data={visibleComments}
         keyExtractor={(c) => c.id}
         contentContainerStyle={styles.listContent}
         keyboardShouldPersistTaps="handled"

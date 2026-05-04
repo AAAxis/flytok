@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ImageBackground,
   Pressable,
@@ -18,6 +19,7 @@ import {
   followersCol,
   followingCol,
   getMyVideos,
+  unblockUser,
   unfollow,
   type VideoDoc,
 } from '@/lib/firestore';
@@ -25,6 +27,8 @@ import { ensureThread } from '@/lib/messaging';
 import { useUserProfile } from '@/lib/useUserLabel';
 import { VideoGrid } from '@/components/VideoGrid';
 import { FollowListSheet } from '@/components/FollowListSheet';
+import { ReportSheet } from '@/components/ReportSheet';
+import { useBlockedSet } from '@/lib/blockSet';
 import { colors } from '@/lib/theme';
 import { applyTheme, useUserTheme } from '@/lib/theme/userTheme';
 import { dicebearURL } from '@/lib/avatars';
@@ -47,8 +51,24 @@ export default function UserProfile() {
   const [busy, setBusy] = useState(false);
   const [openingChat, setOpeningChat] = useState(false);
   const [followList, setFollowList] = useState<null | 'following' | 'followers'>(null);
+  const [showReport, setShowReport] = useState(false);
+  const [unblocking, setUnblocking] = useState(false);
+  const { set: blockedSet } = useBlockedSet();
 
   const isMe = me?.uid === uid;
+  const isBlocked = !isMe && uid != null && blockedSet.has(uid);
+
+  async function handleUnblock() {
+    if (!uid || unblocking) return;
+    setUnblocking(true);
+    try {
+      await unblockUser(uid);
+    } catch (err: any) {
+      Alert.alert('Could not unblock', err?.message ?? 'Try again later.');
+    } finally {
+      setUnblocking(false);
+    }
+  }
 
   const theme = useUserTheme(uid);
   const themed = applyTheme(theme);
@@ -152,7 +172,18 @@ export default function UserProfile() {
               @{topHandle}
             </Text>
           </View>
-          <View style={styles.iconBtnSpacer} />
+          {isMe ? (
+            <View style={styles.iconBtnSpacer} />
+          ) : (
+            <Pressable
+              onPress={() => setShowReport(true)}
+              hitSlop={10}
+              style={[styles.iconBtn, { backgroundColor: themed.accentColor }]}
+              accessibilityLabel="Report or block user"
+            >
+              <Ionicons name="ellipsis-horizontal" size={18} color={colors.bg} />
+            </Pressable>
+          )}
         </View>
 
         {avatarUri ? (
@@ -190,7 +221,31 @@ export default function UserProfile() {
           />
         </View>
 
-        {!isMe && (
+        {!isMe && isBlocked && (
+          <View style={styles.blockedBanner}>
+            <Ionicons name="ban" size={18} color={colors.danger} />
+            <Text style={styles.blockedBannerText} numberOfLines={2}>
+              You blocked @{topHandle}. They can&apos;t reach you here.
+            </Text>
+            <Pressable
+              onPress={handleUnblock}
+              disabled={unblocking}
+              style={({ pressed }) => [
+                styles.unblockBtn,
+                { backgroundColor: themed.accentColor },
+                pressed && styles.actionPressed,
+              ]}
+            >
+              {unblocking ? (
+                <ActivityIndicator color={colors.bg} size="small" />
+              ) : (
+                <Text style={styles.unblockText}>Unblock</Text>
+              )}
+            </Pressable>
+          </View>
+        )}
+
+        {!isMe && !isBlocked && (
           <View style={styles.actionsRow}>
             <Pressable
               onPress={toggleFollow}
@@ -250,6 +305,16 @@ export default function UserProfile() {
         visible={followList !== null}
         onClose={() => setFollowList(null)}
       />
+
+      {!isMe && uid ? (
+        <ReportSheet
+          visible={showReport}
+          onClose={() => setShowReport(false)}
+          target={{ kind: 'user', userId: uid }}
+          blockableUid={uid}
+          onBlocked={() => router.back()}
+        />
+      ) : null}
     </View>
   );
 }
@@ -414,6 +479,34 @@ const styles = StyleSheet.create({
   },
   actionPressed: { opacity: 0.85 },
   actionText: { color: colors.text, fontSize: 13, fontWeight: '600' },
+
+  blockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+    marginHorizontal: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+  },
+  blockedBannerText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  unblockBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    minWidth: 84,
+    alignItems: 'center',
+  },
+  unblockText: { color: colors.bg, fontSize: 13, fontWeight: '700' },
 
   divider: {
     height: StyleSheet.hairlineWidth,

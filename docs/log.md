@@ -1007,3 +1007,149 @@ the file (the sheet owns it now).
    can be `<Image source={…} />` or a `react-native-svg` tree once
    that lib is added). Tighten the placeholder copy at the same
    time — it's the wording Apple will see otherwise.
+
+## 2026-05-04 — Wave 8 (block / restrict full audit)
+
+Spec: `docs/11-wave-8-block-audit.md`. Master design:
+`docs/superpowers/specs/2026-05-04-pre-launch-fixes-design.md`. Built and
+installed on `0010934AE002636` via `ANDROID_SERIAL=… npx expo run:android`
+(`BUILD SUCCESSFUL in 3s`, all 458 Gradle tasks UP-TO-DATE — no native
+config changed this wave so no prebuild). PID 25808 displayed
+`MainActivity` in 1432 ms; `adb logcat -b crash` empty, no `FATAL
+EXCEPTION` / `OutOfMemoryError` / `UnhandledException` lines on the main
+buffer.
+
+### Pre-flight audit (Firebase MCP)
+
+Confirmed via `mcp__firebase__firestore_list_documents`:
+
+- `firestore.rules:73-75` — `match /users/{uid}/blocked/{otherUid}` has
+  the expected `allow read, write: if isSelf(uid)` rule. No change
+  needed this wave.
+- `users/RsVhI2m0ADa1emHcN5yTClgmeIt1/blocked` (Roman's
+  `dima.polskoy@icloud.com` account) and
+  `users/bYjFcA8GvnUKVDnxbOiFkHYqwBs1/blocked` (`polskoydm@outlook.com`)
+  both resolve cleanly and return empty doc lists. Schema and rules are
+  correct; the audit fixes are purely client-side filter coverage.
+
+### `useBlockedSet()` hook
+
+`mobile/lib/blockSet.ts` is new — a tiny `useEffect` that subscribes to
+`blockedCol(me.uid).onSnapshot()` and exposes `{ set: Set<string>;
+ready: boolean }`. Used by the surfaces that need the set to *react*
+to a block/unblock done elsewhere in the same session: search screen,
+visiting-user profile, chat composer banner, comments sheet, follow
+list sheet. The trending / following / map / inbox surfaces keep the
+existing one-shot `getBlockedIds()` path — they refetch on screen
+mount or pull-to-refresh anyway, and that pattern was an explicit
+acceptance criterion ("`getBlockedIds()` is still called once per
+load (not per render)").
+
+### Audit table closure
+
+| # | Surface | Status |
+|---|---|---|
+| 1 | Trending feed | already filtered (`(tabs)/index.tsx:102`). |
+| 2 | Following feed | already filtered (`(tabs)/index.tsx:87`). |
+| 3 | Map clusters | already filtered (`(tabs)/map.tsx:113`). |
+| 4 | Inbox threads | already filtered (`app/inbox.tsx:59` `filteredThreads`). |
+| 5 | New-chat picker | already filtered at the call site (`inbox.tsx:174,199`). `searchUsersByHandle` now also accepts an optional `blockedUids: Set<string>` so the global search screen and any future caller filter inline. |
+| 6 | Search → Users tab | **FIXED** — `app/search.tsx` now passes `blockedUids: blockedSet` into `searchUsersByHandle`. |
+| 7 | Search → Videos tab | **FIXED** — `app/search.tsx` post-filters `searchVideos()` results by `!blockedSet.has(v.ownerId)`. Hashtag and place results are non-user-attributed aggregates so they don't need filtering at the search row level. |
+| 7b | Tag feed (`/tag/{tag}`) | **FIXED** — `app/tag/[tag].tsx` now joins `getBlockedIds()` into the load and filters. Defense-in-depth for the hashtag-routed case. |
+| 8 | Trending places / place card / place feed | PlaceCard receives videos from MapScreen which already filters; the place feed (`app/place/[slug].tsx`) **FIXED** — joins `getBlockedIds()` into its 500-doc scan. |
+| 9 | User profile (`/user/{uid}`) | **FIXED** — see below. |
+| 10 | Comments | **FIXED** — `CommentsSheet` post-filters the live `commentsCol` snapshot by `!blockedSet.has(c.authorId)`. |
+| 11 | Following / followers list | **FIXED** — `FollowListSheet` post-filters its `rows` by `!blockedSet.has(r.uid)` so blocks update the list live. |
+| 12 | DM thread | **FIXED** — see below. |
+| 13 | Real-time updates | covered transitively: every "live" surface above (`CommentsSheet`, `FollowListSheet`, chat thread) now consumes `useBlockedSet()` so a block written from any other surface in the session collapses the offending rows immediately. |
+
+### Visiting-user profile UX
+
+`mobile/app/user/[uid].tsx`:
+
+- Top-bar overlay's right-side `iconBtnSpacer` is now a real
+  `ellipsis-horizontal` icon button (when not viewing your own
+  profile). Tap opens the existing `ReportSheet` with
+  `target = { kind: 'user', userId: uid }` and `blockableUid = uid`.
+  After a successful block, `onBlocked` calls `router.back()` so the
+  blocker lands back on whichever screen routed them in (feed, search,
+  inbox, etc).
+- New `useBlockedSet()` consumer + `isBlocked = blockedSet.has(uid)`
+  derived state. When the visited uid is in the blocker's set, the
+  Follow / Message actions row is replaced with a `blockedBanner`
+  card: ban icon + "You blocked @handle. They can't reach you here."
+  + an `Unblock` pill that calls `unblockUser(uid)`. The live snapshot
+  flips the screen back to the Follow/Message row without any explicit
+  refresh.
+- Added `Alert` to imports for the unblock failure path; reused the
+  existing `applyTheme` accent color so the unblock pill matches the
+  visited user's theme.
+
+### DM thread composer gate
+
+`mobile/app/chat/[threadId].tsx`:
+
+- New `useBlockedSet()` consumer + memoised `otherUid` and `isBlocked`
+  flags derived from `thread.participants`.
+- When `isBlocked`, the `KeyboardStickyView` swaps the `<Composer>` for
+  a `blockedBanner` row: ban icon + "You blocked {label}. Unblock to
+  send messages." + an Unblock pill. `<Composer>` is unmounted so the
+  text input itself is no longer focusable — that is the "composer is
+  disabled" contract from the spec, not a `disabled` prop.
+- The `<FlatList>` source switched from `messages` to `visibleMessages`
+  (`messages.filter((m) => m.authorId !== otherUid)` while blocked) so
+  any historic bubbles authored by the blocked counterparty disappear
+  for the duration of the block; unblock restores them.
+- Empty-state hint flips from "Say hi 👋" to blank when blocked so we
+  don't tease the user into thinking the thread is just empty.
+
+### Rules
+
+`firestore.rules` is unchanged. The existing
+`match /users/{uid}/blocked/{otherUid} { allow read, write: if isSelf(uid); }`
+already covers blocks/unblocks; no new collection or field was
+introduced this wave.
+
+### Verification
+
+- `npx tsc --noEmit` (mobile) — clean (0 errors).
+- `npx expo run:android` clean incremental build (`BUILD SUCCESSFUL in
+  3s`, all 458 tasks UP-TO-DATE), debug APK installed and dev client
+  opened on `0010934AE002636`. `Displayed com.roamrez.flytok/.MainActivity
+  +1s432ms`. No `FATAL EXCEPTION` / `OutOfMemoryError` /
+  `UnhandledException` lines.
+- **Pending** (manual, mirrors the W6/W7 pattern): two-account device
+  smoke test of the audit. Roman to run the golden path below.
+
+### Manual follow-ups for Roman (W8)
+
+1. Two-account on-device smoke test of every surface on
+   `0010934AE002636`. With account A blocking account B from the feed
+   ellipsis, walk:
+   - Feed (Trending + Following): B's videos gone.
+   - Map: B's pins gone.
+   - Search: type B's handle / a caption B wrote / a hashtag B uses /
+     a place B is at — Users tab hides B; Videos tab hides B's videos;
+     Hashtags + Places tabs are aggregates so they still show counts
+     but the routed feed (`/tag/...`, `/place/...`) hides B's videos.
+   - Comments sheet on a video B has commented on: B's comment row is
+     gone.
+   - Inbox threads: any thread with B disappears.
+   - DM thread (open the chat that already existed before the block):
+     bubbles from B disappear; composer is replaced by the "You
+     blocked {label}. Unblock to send messages." banner + Unblock pill.
+   - Follow / Followers sheets: B's row is gone.
+   - Visit `/user/{B.uid}` directly: top-right ellipsis opens
+     `ReportSheet`; profile shows the "You blocked @handle. They can't
+     reach you here." banner with an Unblock action; tapping Unblock
+     restores Follow + Message actions live.
+2. Confirm reverse direction: account B opens the same chat with A —
+   B can still see A's messages (block is one-way) and B's composer is
+   still functional (block is private). Server-side block enforcement
+   is post-launch work, documented at the top of
+   `docs/superpowers/specs/2026-05-04-pre-launch-fixes-design.md`.
+3. After block, confirm `useBlockedSet()` is reactive: open
+   `/user/{B.uid}` on the device, then in another session block from
+   the feed ellipsis — the visiting profile should flip to the blocked
+   banner without a manual refresh.

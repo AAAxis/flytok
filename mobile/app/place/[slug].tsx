@@ -10,7 +10,7 @@ import {
   ViewToken,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { videosCol, type VideoDoc } from '@/lib/firestore';
+import { getBlockedIds, videosCol, type VideoDoc } from '@/lib/firestore';
 import { FeedItem } from '@/components/FeedItem';
 import { usePlayerPool, type FeedPoolItem } from '@/lib/feed/usePlayerPool';
 import { getCachedVideoPath } from '@/lib/videoCache';
@@ -44,10 +44,17 @@ export default function PlaceFeed() {
     // already pulls all videos into memory; here we replicate the simplest
     // approach (200-doc scan) until the W3 places aggregator lands.
     try {
-      const snap = await videosCol().limit(500).get();
+      const [snap, blockedIds] = await Promise.all([
+        videosCol().limit(500).get(),
+        getBlockedIds(),
+      ]);
       return snap.docs
         .map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }))
-        .filter((v) => v.location?.label?.trim().toLowerCase() === matchKey);
+        .filter(
+          (v) =>
+            v.location?.label?.trim().toLowerCase() === matchKey &&
+            !blockedIds.has(v.ownerId),
+        );
     } catch (err) {
       console.warn('[place-feed] load failed:', err);
       return [];

@@ -10,7 +10,7 @@ import {
   ViewToken,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { videosCol, type VideoDoc } from '@/lib/firestore';
+import { getBlockedIds, videosCol, type VideoDoc } from '@/lib/firestore';
 import { FeedItem } from '@/components/FeedItem';
 import { usePlayerPool, type FeedPoolItem } from '@/lib/feed/usePlayerPool';
 import { getCachedVideoPath } from '@/lib/videoCache';
@@ -37,13 +37,16 @@ export default function TagFeed() {
   const load = useCallback(async () => {
     if (!normalised) return [] as VideoDoc[];
     try {
-      const snap = await videosCol()
-        .where('hashtags', 'array-contains', normalised)
-        .limit(200)
-        .get();
-      const list = snap.docs.map(
-        (d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }),
-      );
+      const [snap, blockedIds] = await Promise.all([
+        videosCol()
+          .where('hashtags', 'array-contains', normalised)
+          .limit(200)
+          .get(),
+        getBlockedIds(),
+      ]);
+      const list = snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }))
+        .filter((v) => !blockedIds.has(v.ownerId));
       list.sort((a, b) => {
         const ta = a.createdAt?.toMillis?.() ?? 0;
         const tb = b.createdAt?.toMillis?.() ?? 0;

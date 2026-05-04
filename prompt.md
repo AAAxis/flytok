@@ -119,13 +119,16 @@ entry in `docs/log.md`.
       logout re-onboarding device walkthrough still pending — see
       `docs/log.md` Wave 7 section.)*
 
-- [ ] **Wave 8 — Block / restrict full audit** —
+- [x] **Wave 8 — Block / restrict full audit** —
       `docs/11-wave-8-block-audit.md`
       Audit every surface (feed, map, inbox, search, comments, follow
       list, chat thread, place card) with the Firebase MCP and confirm
       a blocked user's content is gone end-to-end. Add a Block /
       Report button on the visiting-user profile and a "you blocked
-      this user" banner there + on the chat composer.
+      this user" banner there + on the chat composer. *(Code shipped
+      2026-05-04, app boots clean on `0010934AE002636`. Two-account
+      device smoke test still pending — see `docs/log.md` Wave 8
+      section.)*
 
 - [ ] **Wave 9 — Fastlane + Store submission** *(deferred — was Wave 5)* —
       `docs/08-wave-5-fastlane.md`

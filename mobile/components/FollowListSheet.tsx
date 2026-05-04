@@ -14,6 +14,7 @@ import {
   usersCol,
 } from '@/lib/firestore';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
+import { useBlockedSet } from '@/lib/blockSet';
 import { colors } from '@/lib/theme';
 
 type Mode = 'following' | 'followers';
@@ -38,6 +39,7 @@ export function FollowListSheet({
 }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
+  const { set: blockedSet } = useBlockedSet();
 
   useEffect(() => {
     if (!visible || !uid) return;
@@ -105,7 +107,7 @@ export function FollowListSheet({
         </View>
       ) : (
         <BottomSheetFlatList
-          data={rows}
+          data={rows.filter((r) => !blockedSet.has(r.uid))}
           keyExtractor={(r) => r.uid}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => <UserRow row={item} />}

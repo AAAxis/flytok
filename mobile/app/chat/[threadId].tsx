@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import {
+  ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -18,10 +21,16 @@ import {
   useThread,
   type ChatMessage,
 } from '@/lib/messaging';
-import { getCachedUserBrief, getUserBrief, type UserBrief } from '@/lib/firestore';
+import {
+  getCachedUserBrief,
+  getUserBrief,
+  unblockUser,
+  type UserBrief,
+} from '@/lib/firestore';
 import { MessageBubble } from '@/components/messaging/MessageBubble';
 import { Composer } from '@/components/messaging/Composer';
 import { ReportSheet } from '@/components/ReportSheet';
+import { useBlockedSet } from '@/lib/blockSet';
 import { colors } from '@/lib/theme';
 
 export default function ChatThread() {
@@ -33,6 +42,32 @@ export default function ChatThread() {
   const { messages, sendText, sendImage } = useMessages(threadId);
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const [reportTargetUid, setReportTargetUid] = useState<string | null>(null);
+  const { set: blockedSet } = useBlockedSet();
+  const [unblocking, setUnblocking] = useState(false);
+
+  const otherUid = useMemo(() => {
+    if (!thread || !me) return null;
+    return thread.participants.find((p) => p !== me.uid) ?? null;
+  }, [thread, me]);
+
+  const isBlocked = otherUid != null && blockedSet.has(otherUid);
+
+  const visibleMessages = useMemo(
+    () => (isBlocked ? messages.filter((m) => m.authorId !== otherUid) : messages),
+    [messages, isBlocked, otherUid],
+  );
+
+  async function handleUnblock() {
+    if (!otherUid || unblocking) return;
+    setUnblocking(true);
+    try {
+      await unblockUser(otherUid);
+    } catch (err: any) {
+      Alert.alert('Could not unblock', err?.message ?? 'Try again later.');
+    } finally {
+      setUnblocking(false);
+    }
+  }
 
   // Mark the thread as read on mount and whenever a new message arrives
   // while the screen is on top.
@@ -72,7 +107,7 @@ export default function ChatThread() {
       <View style={styles.safe}>
         <FlatList
           ref={listRef}
-          data={messages}
+          data={visibleMessages}
           keyExtractor={(m) => m.id}
           style={styles.flex}
           contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 56 }]}
@@ -95,7 +130,9 @@ export default function ChatThread() {
               />
             ) : null
           }
-          ListEmptyComponent={<Text style={styles.empty}>Say hi 👋</Text>}
+          ListEmptyComponent={
+            <Text style={styles.empty}>{isBlocked ? '' : 'Say hi 👋'}</Text>
+          }
         />
 
         {/*
@@ -107,27 +144,50 @@ export default function ChatThread() {
           `opened: 0` keeps the input flush against the keyboard with no gap.
         */}
         <KeyboardStickyView offset={{ closed: -insets.bottom, opened: 0 }}>
-          <Composer
-            onSendText={async (text) => {
-              try {
-                await sendText(text);
-              } catch (err) {
-                console.warn('[chat] sendText failed', err);
-              }
-            }}
-            onSendImage={async (img) => {
-              try {
-                await sendImage({
-                  uri: img.uri,
-                  width: img.width,
-                  height: img.height,
-                  contentType: img.mimeType,
-                });
-              } catch (err) {
-                console.warn('[chat] sendImage failed', err);
-              }
-            }}
-          />
+          {isBlocked ? (
+            <View style={[styles.blockedBanner, { paddingBottom: insets.bottom + 12 }]}>
+              <Ionicons name="ban" size={18} color={colors.danger} />
+              <Text style={styles.blockedBannerText} numberOfLines={2}>
+                You blocked {otherBrief.label}. Unblock to send messages.
+              </Text>
+              <Pressable
+                onPress={handleUnblock}
+                disabled={unblocking}
+                style={({ pressed }) => [
+                  styles.unblockBtn,
+                  pressed && styles.unblockPressed,
+                ]}
+              >
+                {unblocking ? (
+                  <ActivityIndicator color={colors.bg} size="small" />
+                ) : (
+                  <Text style={styles.unblockText}>Unblock</Text>
+                )}
+              </Pressable>
+            </View>
+          ) : (
+            <Composer
+              onSendText={async (text) => {
+                try {
+                  await sendText(text);
+                } catch (err) {
+                  console.warn('[chat] sendText failed', err);
+                }
+              }}
+              onSendImage={async (img) => {
+                try {
+                  await sendImage({
+                    uri: img.uri,
+                    width: img.width,
+                    height: img.height,
+                    contentType: img.mimeType,
+                  });
+                } catch (err) {
+                  console.warn('[chat] sendImage failed', err);
+                }
+              }}
+            />
+          )}
         </KeyboardStickyView>
       </View>
 
@@ -187,4 +247,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flexShrink: 1,
   },
+  blockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: colors.surface,
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  blockedBannerText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 13,
+  },
+  unblockBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: colors.accent,
+    minWidth: 84,
+    alignItems: 'center',
+  },
+  unblockPressed: { opacity: 0.85 },
+  unblockText: { color: colors.bg, fontSize: 13, fontWeight: '700' },
 });

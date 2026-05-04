@@ -16,6 +16,7 @@ import {
   searchHashtags,
   searchPlaces,
 } from '@/lib/search/queries';
+import { useBlockedSet } from '@/lib/blockSet';
 import { PopularChips } from '@/components/search/PopularChips';
 import { PrefersSection } from '@/components/search/PrefersSection';
 import { TrendingPlaces } from '@/components/search/TrendingPlaces';
@@ -47,6 +48,7 @@ export default function SearchScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
+  const { set: blockedSet } = useBlockedSet();
 
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
@@ -67,32 +69,40 @@ export default function SearchScreen() {
     return () => clearTimeout(id);
   }, [query]);
 
-  const runSearch = useCallback(async (q: string) => {
-    if (q.length < MIN_QUERY_CHARS) {
-      setResults(EMPTY_RESULTS);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const [users, videos, hashtags, places] = await Promise.all([
-        searchUsersByHandle(q, { limit: 20 }),
-        searchVideos(q, { limit: 20 }),
-        searchHashtags(q, { limit: 10 }),
-        searchPlaces(q, { limit: 10 }),
-      ]);
-      setResults({ users, videos, hashtags, places });
-    } catch (err) {
-      console.warn('[search] dispatch failed:', err);
-      setResults(EMPTY_RESULTS);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const runSearch = useCallback(
+    async (q: string, blocked: Set<string>) => {
+      if (q.length < MIN_QUERY_CHARS) {
+        setResults(EMPTY_RESULTS);
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      try {
+        const [users, videos, hashtags, places] = await Promise.all([
+          searchUsersByHandle(q, { limit: 20, blockedUids: blocked }),
+          searchVideos(q, { limit: 20 }),
+          searchHashtags(q, { limit: 10 }),
+          searchPlaces(q, { limit: 10 }),
+        ]);
+        // searchVideos / searchHashtags don't know about block lists, so drop
+        // any video owned by a blocked user here. Hashtags + places are
+        // shared aggregates (not user-attributed) so they don't leak content
+        // by name alone.
+        const filteredVideos = videos.filter((v) => !blocked.has(v.ownerId));
+        setResults({ users, videos: filteredVideos, hashtags, places });
+      } catch (err) {
+        console.warn('[search] dispatch failed:', err);
+        setResults(EMPTY_RESULTS);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
-    runSearch(debounced.toLowerCase());
-  }, [debounced, runSearch]);
+    runSearch(debounced.toLowerCase(), blockedSet);
+  }, [debounced, blockedSet, runSearch]);
 
   const isQuerying = debounced.length >= MIN_QUERY_CHARS;
 

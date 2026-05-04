@@ -60,7 +60,7 @@ export async function getFollowedUserProfiles(opts: { limit?: number } = {}): Pr
  */
 export async function searchUsersByHandle(
   query: string,
-  opts: { limit?: number; excludeUid?: string } = {},
+  opts: { limit?: number; excludeUid?: string; blockedUids?: Set<string> } = {},
 ): Promise<UserDoc[]> {
   const q = query.trim().toLowerCase();
   if (q.length < 2) return [];
@@ -72,7 +72,9 @@ export async function searchUsersByHandle(
     .limit(opts.limit ?? 25)
     .get();
 
+  const blocked = opts.blockedUids;
   return snap.docs
     .map((d) => shapeUser(d.id, d.data() as Record<string, unknown>))
-    .filter((u) => u.uid !== opts.excludeUid);
+    .filter((u) => u.uid !== opts.excludeUid)
+    .filter((u) => !blocked || !blocked.has(u.uid));
 }
