@@ -3,6 +3,7 @@ import auth from '@react-native-firebase/auth';
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ImageBackground,
   Pressable,
@@ -12,7 +13,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
   diagnoseSaves,
@@ -26,7 +27,6 @@ import {
   usersCol,
   type VideoDoc,
 } from '@/lib/firestore';
-import { Alert } from 'react-native';
 import { VideoGrid } from '@/components/VideoGrid';
 import { SettingsSheet } from '@/components/SettingsSheet';
 import { EditProfileSheet } from '@/components/EditProfileSheet';
@@ -39,18 +39,22 @@ import { dicebearURL } from '@/lib/avatars';
 
 type Tab = 'mine' | 'saved';
 
+const COVER_VISIBLE = 200;
+const AVATAR_SIZE = 96;
+const AVATAR_OVERLAP = AVATAR_SIZE / 2;
+
 export default function Profile() {
   const router = useRouter();
   const me = auth().currentUser;
   const insets = useSafeAreaInsets();
   const cached = me ? getCachedProfile(me.uid) : null;
+  const [username, setUsername] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(cached?.displayName ?? null);
   const [photoURL, setPhotoURL] = useState<string | null>(cached?.photoURL ?? null);
   const [bio, setBio] = useState<string | null>(cached?.bio ?? null);
   const [mine, setMine] = useState<VideoDoc[]>(cached?.mine ?? []);
   const [saved, setSaved] = useState<VideoDoc[]>(cached?.saved ?? []);
   const [counts, setCounts] = useState(cached?.counts ?? { following: 0, followers: 0 });
-  // Only block on the spinner if we have nothing cached at all.
   const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>('mine');
@@ -78,12 +82,8 @@ export default function Profile() {
       }),
       getFollowCounts(me.uid),
     ]);
-    console.log('[profile] loaded', {
-      uid: me.uid,
-      mine: myVideos.length,
-      savedIds: savedIds.length,
-    });
     const profileData = profileSnap.data() ?? {};
+    setUsername((profileData.username as string) ?? null);
     setDisplayName((profileData.displayName as string) ?? null);
     setPhotoURL((profileData.photoURL as string) ?? null);
     setBio((profileData.bio as string) ?? null);
@@ -92,11 +92,6 @@ export default function Profile() {
     const savedVideos = await getVideosByIds(savedIds).catch((err) => {
       console.warn('[profile] getVideosByIds failed:', err);
       return [];
-    });
-    console.log('[profile] saved fetched', {
-      requestedIds: savedIds.length,
-      gotVideos: savedVideos.length,
-      missingIds: savedIds.filter((id) => !savedVideos.find((v) => v.id === id)),
     });
     setSaved(savedVideos);
     if (me) {
@@ -116,8 +111,6 @@ export default function Profile() {
     load().finally(() => setLoading(false));
   }, [load]);
 
-  // One-shot diagnostic to expose silent rule failures on the saves
-  // subcollection. Runs once per session per uid.
   useEffect(() => {
     if (!me) return;
     const flag = `__savesDiagRun_${me.uid}`;
@@ -134,8 +127,6 @@ export default function Profile() {
     });
   }, [me]);
 
-  // Live-update follow counts so following/unfollowing in the feed reflects
-  // immediately on this screen without requiring a pull-to-refresh.
   useEffect(() => {
     if (!me) return;
     return followingCol(me.uid).onSnapshot(
@@ -152,13 +143,11 @@ export default function Profile() {
     );
   }, [me]);
 
-  // Live-update the Saved tab whenever the user saves/unsaves anywhere in the app.
   useEffect(() => {
     if (!me) return;
     return savesCol(me.uid).onSnapshot(
       async (snap) => {
         const ids = snap.docs.map((d) => d.id);
-        console.log('[profile] saves snapshot', { count: ids.length });
         if (!ids.length) {
           setSaved([]);
           return;
@@ -174,8 +163,6 @@ export default function Profile() {
     );
   }, [me]);
 
-  // Re-fetch when the tab is focused so saves/follows made in the feed
-  // surface immediately when the user switches back here.
   useFocusEffect(
     useCallback(() => {
       load();
@@ -193,90 +180,124 @@ export default function Profile() {
 
   if (!me) return null;
 
-  const handle = displayName ?? (me.email ? me.email.split('@')[0] : me.uid.slice(0, 8));
+  // Top-bar handle: prefer the persisted username; fall back to a uid-derived
+  // placeholder for legacy accounts (ensureUsername() will replace it on the
+  // next foreground tick). Crucially, the displayName is NEVER used here —
+  // editing the user's name must not change their @handle.
+  const topHandle = username ?? `user_${me.uid.slice(0, 6)}`;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.topBar}>
-        <Text style={styles.handle}>@{handle}</Text>
-        <Pressable onPress={() => setShowSettings(true)} hitSlop={10}>
-          <Ionicons name="menu" size={26} color={colors.text} />
-        </Pressable>
-      </View>
-
+    <View style={styles.root}>
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 60 }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
         }
+        showsVerticalScrollIndicator={false}
       >
         {loading ? (
-          <View style={styles.loading}>
+          <View style={[styles.loading, { paddingTop: insets.top + 80 }]}>
             <ActivityIndicator color={colors.accent} />
           </View>
         ) : (
           <>
-            <ThemedHeader
+            <Cover
               backgroundColor={themed.headerBackgroundColor}
               backgroundImageURL={themed.headerBackgroundImageURL}
+              topInset={insets.top}
+            />
+
+            <View
+              style={[
+                styles.topBarOverlay,
+                { top: insets.top + 8 },
+              ]}
+              pointerEvents="box-none"
             >
-              <Pressable onPress={() => setShowEdit(true)} style={styles.avatarWrap} hitSlop={6}>
-                {avatarUri ? (
-                  <Image
-                    source={{ uri: avatarUri }}
-                    style={[styles.avatarImage, themed.avatarBorder]}
-                  />
-                ) : (
-                  <View style={[styles.avatar, themed.avatarBorder]}>
-                    <Ionicons name="person" size={32} color={colors.text} />
-                  </View>
-                )}
-                <View style={[styles.editBadge, { backgroundColor: themed.accentColor }]}>
-                  <Ionicons name="pencil" size={12} color={colors.bg} />
-                </View>
+              <View style={styles.handlePill}>
+                <Text style={styles.handlePillText} numberOfLines={1}>
+                  @{topHandle}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setShowSettings(true)}
+                hitSlop={10}
+                style={[styles.menuBtn, { backgroundColor: themed.accentColor }]}
+              >
+                <Ionicons name="menu" size={20} color={colors.bg} />
               </Pressable>
+            </View>
 
-              {bio ? <Text style={styles.bio}>{bio}</Text> : null}
-
-              <View style={styles.statsRow}>
-                <Stat label="Posts" value={mine.length} />
-                <Stat label="Saved" value={saved.length} />
-                <Stat
-                  label="Following"
-                  value={counts.following}
-                  onPress={() => setFollowList('following')}
-                />
-                <Stat
-                  label="Followers"
-                  value={counts.followers}
-                  onPress={() => setFollowList('followers')}
-                />
+            <Pressable
+              onPress={() => setShowEdit(true)}
+              style={styles.avatarWrap}
+              hitSlop={6}
+            >
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Ionicons name="person" size={36} color={colors.text} />
+                </View>
+              )}
+              <View style={[styles.editBadge, { backgroundColor: themed.accentColor }]}>
+                <Ionicons name="pencil" size={12} color={colors.bg} />
               </View>
+            </Pressable>
 
-              <View style={styles.actionsRow}>
-                <Pressable
-                  onPress={() => setShowEdit(true)}
-                  style={({ pressed }) => [
-                    styles.actionBtn,
-                    pressed && styles.actionPressed,
-                  ]}
-                >
-                  <Ionicons name="pencil" size={14} color={colors.text} />
-                  <Text style={styles.actionText}>Edit profile</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setShowCustomize(true)}
-                  style={({ pressed }) => [
-                    styles.actionBtn,
-                    { backgroundColor: themed.accentColor, borderColor: themed.accentColor },
-                    pressed && styles.actionPressed,
-                  ]}
-                >
-                  <Ionicons name="color-palette-outline" size={14} color={colors.bg} />
-                  <Text style={[styles.actionText, { color: colors.bg }]}>Customize</Text>
-                </Pressable>
-              </View>
-            </ThemedHeader>
+            <View style={styles.identity}>
+              <Text style={styles.displayName} numberOfLines={1}>
+                {displayName?.trim() || `@${topHandle}`}
+              </Text>
+              {bio ? (
+                <Text style={styles.bio} numberOfLines={2}>
+                  {bio}
+                </Text>
+              ) : null}
+            </View>
+
+            <View style={styles.statsCard}>
+              <Stat label="Posts" value={mine.length} />
+              <StatDivider />
+              <Stat label="Saved" value={saved.length} />
+              <StatDivider />
+              <Stat
+                label="Following"
+                value={counts.following}
+                onPress={() => setFollowList('following')}
+              />
+              <StatDivider />
+              <Stat
+                label="Followers"
+                value={counts.followers}
+                onPress={() => setFollowList('followers')}
+              />
+            </View>
+
+            <View style={styles.actionsRow}>
+              <Pressable
+                onPress={() => setShowEdit(true)}
+                style={({ pressed }) => [
+                  styles.actionBtn,
+                  styles.actionBtnSecondary,
+                  pressed && styles.actionPressed,
+                ]}
+              >
+                <Ionicons name="pencil" size={14} color={colors.text} />
+                <Text style={styles.actionText}>Edit profile</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setShowCustomize(true)}
+                style={({ pressed }) => [
+                  styles.actionBtn,
+                  { backgroundColor: themed.accentColor },
+                  pressed && styles.actionPressed,
+                ]}
+              >
+                <Ionicons name="color-palette-outline" size={14} color={colors.bg} />
+                <Text style={[styles.actionText, { color: colors.bg }]}>Customize</Text>
+              </Pressable>
+            </View>
 
             <View style={styles.tabsBar}>
               <TabButton
@@ -335,32 +356,32 @@ export default function Profile() {
         visible={followList !== null}
         onClose={() => setFollowList(null)}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
-function ThemedHeader({
+function Cover({
   backgroundColor,
   backgroundImageURL,
-  children,
+  topInset,
 }: {
   backgroundColor: string;
   backgroundImageURL: string | null;
-  children: React.ReactNode;
+  topInset: number;
 }) {
+  const height = COVER_VISIBLE + topInset;
   if (backgroundImageURL) {
     return (
       <ImageBackground
         source={{ uri: backgroundImageURL }}
-        style={styles.headerArea}
-        imageStyle={styles.headerBgImage}
+        style={[styles.cover, { height }]}
+        imageStyle={styles.coverImage}
       >
-        <View style={styles.headerScrim} />
-        <View style={styles.headerContent}>{children}</View>
+        <View style={styles.coverScrim} />
       </ImageBackground>
     );
   }
-  return <View style={[styles.headerArea, { backgroundColor }]}>{children}</View>;
+  return <View style={[styles.cover, { height, backgroundColor }]} />;
 }
 
 function Stat({
@@ -378,14 +399,16 @@ function Stat({
       <Text style={styles.statLabel}>{label}</Text>
     </>
   );
-  if (!onPress) {
-    return <View style={styles.stat}>{content}</View>;
-  }
+  if (!onPress) return <View style={styles.stat}>{content}</View>;
   return (
     <Pressable onPress={onPress} hitSlop={6} style={styles.stat}>
       {content}
     </Pressable>
   );
+}
+
+function StatDivider() {
+  return <View style={styles.statDivider} />;
 }
 
 function TabButton({
@@ -405,90 +428,139 @@ function TabButton({
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  topBar: {
+  root: { flex: 1, backgroundColor: colors.bg },
+  content: {},
+  loading: { alignItems: 'center' },
+
+  cover: {
+    width: '100%',
+    overflow: 'hidden',
+  },
+  coverImage: { resizeMode: 'cover' },
+  coverScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+
+  topBarOverlay: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
   },
-  handle: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  content: {},
-  loading: { paddingVertical: 60, alignItems: 'center' },
-  headerArea: {
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 20,
-    overflow: 'hidden',
+  handlePill: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    maxWidth: 220,
   },
-  headerBgImage: { resizeMode: 'cover' },
-  headerScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  headerContent: { alignItems: 'center', width: '100%' },
-  avatarWrap: { position: 'relative' },
-  avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: colors.surfaceAlt,
+  handlePillText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  menuBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  avatarWrap: {
+    alignSelf: 'center',
+    marginTop: -AVATAR_OVERLAP,
+    position: 'relative',
+  },
   avatarImage: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
     backgroundColor: colors.surfaceAlt,
+    borderColor: colors.bg,
+    borderWidth: 3,
+  },
+  avatarPlaceholder: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.bg,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   editBadge: {
     position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.accent,
+    right: 0,
+    bottom: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderColor: colors.bg,
     borderWidth: 2,
   },
-  bio: { color: colors.text, fontSize: 13, textAlign: 'center', marginTop: 16, paddingHorizontal: 24 },
-  statsRow: { flexDirection: 'row', gap: 24, marginTop: 16 },
+
+  identity: { alignItems: 'center', paddingHorizontal: 24, marginTop: 10 },
+  displayName: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  bio: {
+    color: colors.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+
+  statsCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginTop: 16,
+    marginHorizontal: 16,
+    paddingVertical: 12,
+  },
+  stat: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  statValue: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  statLabel: { color: colors.textDim, fontSize: 11, marginTop: 2 },
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginVertical: 4,
+  },
+
   actionsRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 18,
-    alignSelf: 'stretch',
-    justifyContent: 'center',
+    marginTop: 12,
+    marginHorizontal: 16,
   },
   actionBtn: {
+    flex: 1,
+    height: 40,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 12,
+  },
+  actionBtnSecondary: {
     backgroundColor: colors.surface,
-    borderWidth: 1,
     borderColor: colors.border,
+    borderWidth: 1,
   },
   actionPressed: { opacity: 0.85 },
-  actionText: { color: colors.text, fontSize: 12, fontWeight: '600' },
-  stat: { alignItems: 'center' },
-  statValue: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  statLabel: { color: colors.textDim, fontSize: 12 },
+  actionText: { color: colors.text, fontSize: 13, fontWeight: '600' },
+
   tabsBar: {
     flexDirection: 'row',
     borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    marginTop: 8,
+    marginTop: 16,
   },
   tabButton: {
     flex: 1,

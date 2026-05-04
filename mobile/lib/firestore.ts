@@ -21,19 +21,48 @@ export type VideoDoc = {
   createdAt?: FirebaseFirestoreTypes.Timestamp;
 };
 
+/**
+ * Hashtag length budget. Each individual tag is capped at 30 chars (matches
+ * Instagram), and the *combined* length of the comma-joined list is capped
+ * at HASHTAG_TOTAL_CHAR_LIMIT (~80) so the bucket stays cheap to index and
+ * unambiguous to render in chip rows.
+ */
+export const HASHTAG_MAX_TAG_LENGTH = 30;
+export const HASHTAG_TOTAL_CHAR_LIMIT = 80;
+export const HASHTAG_MAX_COUNT = 10;
+
+export function isValidHashtag(tag: string): boolean {
+  if (!tag) return false;
+  if (tag.length > HASHTAG_MAX_TAG_LENGTH) return false;
+  return /^[\p{L}\p{N}_]+$/u.test(tag);
+}
+
+export function totalHashtagsLength(tags: string[]): number {
+  // Mirrors how the chip row renders: tag bodies + a single-char join.
+  if (tags.length === 0) return 0;
+  return tags.reduce((sum, t) => sum + t.length, 0) + Math.max(0, tags.length - 1);
+}
+
+export function normaliseHashtags(input: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of input) {
+    if (typeof raw !== 'string') continue;
+    const tag = raw.replace(/^#+/, '').trim().toLowerCase();
+    if (!isValidHashtag(tag)) continue;
+    if (seen.has(tag)) continue;
+    if (out.length >= HASHTAG_MAX_COUNT) break;
+    if (totalHashtagsLength([...out, tag]) > HASHTAG_TOTAL_CHAR_LIMIT) break;
+    seen.add(tag);
+    out.push(tag);
+  }
+  return out;
+}
+
 export function extractHashtags(text: string): string[] {
   const matches = text.match(/#[\p{L}\p{N}_]+/gu);
   if (!matches) return [];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const m of matches) {
-    const tag = m.slice(1).toLowerCase();
-    if (tag && !seen.has(tag)) {
-      seen.add(tag);
-      out.push(tag);
-    }
-  }
-  return out;
+  return normaliseHashtags(matches.map((m) => m.slice(1)));
 }
 
 export function extractMentions(text: string): string[] {
@@ -73,6 +102,7 @@ export { sendText as sendTextMessage, sendVideoCard } from './messaging';
 
 export const videosCol = () => firestore().collection('videos');
 export const usersCol = () => firestore().collection('users');
+export const usernamesCol = () => firestore().collection('usernames');
 export const reportsCol = () => firestore().collection('reports');
 
 export function blockedCol(uid: string) {
@@ -230,6 +260,93 @@ export async function updateProfile({
   await usersCol().doc(user.uid).set(update, { merge: true });
 }
 
+// Atomic, race-free username claim. Reserves usernames/{lower} as the
+// uniqueness primitive: the doc's existence ⇒ that handle is taken. Old
+// reservation (if any) is released in the same transaction.
+//
+// Throws 'username_taken' if the handle is already claimed by someone else.
+// Throws 'invalid_username' if the candidate fails local validation.
+export async function claimUsername(newUsername: string): Promise<void> {
+  // Imported lazily to keep this file's import surface lean and avoid a
+  // cycle if username.ts ever needs firestore types.
+  const { validateUsername, normaliseUsername } = await import('./username');
+  const user = requireUser();
+  const lower = normaliseUsername(newUsername);
+  if (validateUsername(lower)) throw new Error('invalid_username');
+
+  await firestore().runTransaction(async (tx) => {
+    const userRef = usersCol().doc(user.uid);
+    const userSnap = await tx.get(userRef);
+    const currentLower = (userSnap.data()?.usernameLower as string | undefined) ?? null;
+    if (currentLower === lower) return;
+
+    const newRef = usernamesCol().doc(lower);
+    const newSnap = await tx.get(newRef);
+    if (newSnap.exists && (newSnap.data()?.uid as string) !== user.uid) {
+      throw new Error('username_taken');
+    }
+
+    if (!newSnap.exists) tx.set(newRef, { uid: user.uid });
+    if (currentLower && currentLower !== lower) {
+      tx.delete(usernamesCol().doc(currentLower));
+    }
+    tx.set(
+      userRef,
+      { username: lower, usernameLower: lower },
+      { merge: true },
+    );
+  });
+}
+
+// Best-effort: if the signed-in user has no username, derive one from their
+// displayName (or 'user') and try to claim it with a short uid suffix. Up to
+// three attempts with random suffixes on contention. Silent on failure —
+// the next foreground tick re-tries via the same caller.
+//
+// Idempotent: short-circuits if `usernameLower` is already set on the user
+// doc. Safe to call from app launch.
+const ensureUsernameInflight = new Set<string>();
+export async function ensureUsername(): Promise<void> {
+  const user = auth().currentUser;
+  if (!user) return;
+  if (ensureUsernameInflight.has(user.uid)) return;
+  ensureUsernameInflight.add(user.uid);
+  try {
+    const ref = usersCol().doc(user.uid);
+    const snap = await ref.get();
+    const data = snap.data() ?? {};
+    if (data.usernameLower) return;
+
+    const { slugifyDisplayName, withSuffix, validateUsername } = await import(
+      './username'
+    );
+    const base = slugifyDisplayName((data.displayName as string) ?? user.displayName ?? null);
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const suffix =
+        attempt === 0
+          ? user.uid.slice(0, 4)
+          : Math.random().toString(36).slice(2, 6);
+      const candidate = withSuffix(base, suffix);
+      if (validateUsername(candidate)) continue;
+      try {
+        await claimUsername(candidate);
+        return;
+      } catch (err: any) {
+        if (err?.message !== 'username_taken') {
+          console.warn('[ensureUsername] failed', err);
+          return;
+        }
+        // contention — try another suffix
+      }
+    }
+  } catch (err) {
+    console.warn('[ensureUsername] unexpected', err);
+  } finally {
+    ensureUsernameInflight.delete(user.uid);
+  }
+}
+
 export type ReportReason = 'spam' | 'harassment' | 'nudity' | 'violence' | 'other';
 export type ReportTarget =
   | { kind: 'video'; videoId: string; ownerId: string }
@@ -300,7 +417,7 @@ export async function updateOwnVideoCaption(
   const tokenResult = await user.getIdTokenResult();
   const isAdmin = tokenResult.claims.role === 'admin';
   if (!isAdmin && data?.ownerId !== user.uid) throw new Error('Not your video');
-  const tags = hashtags ?? extractHashtags(caption);
+  const tags = normaliseHashtags(hashtags ?? extractHashtags(caption));
   await ref.update({
     caption: caption.trim(),
     hashtags: tags,
@@ -362,17 +479,24 @@ function requireUser() {
   return u;
 }
 
-// In-memory cache for user display names. Avoids one read per chat row.
-const userLabelCache = new Map<string, string>();
+export type UserBrief = { label: string; photoURL: string | null };
 
-export function getCachedUserLabel(uid: string | null | undefined): string | null {
+// In-memory cache for user display name + photoURL. Avoids one read per chat
+// row / message bubble. Shared by both `getUserLabel` and `getUserBrief`.
+const userBriefCache = new Map<string, UserBrief>();
+
+export function getCachedUserBrief(uid: string | null | undefined): UserBrief | null {
   if (!uid) return null;
-  return userLabelCache.get(uid) ?? null;
+  return userBriefCache.get(uid) ?? null;
 }
 
-export async function getUserLabel(uid: string): Promise<string> {
-  if (!uid) return 'user';
-  const cached = userLabelCache.get(uid);
+export function getCachedUserLabel(uid: string | null | undefined): string | null {
+  return getCachedUserBrief(uid)?.label ?? null;
+}
+
+export async function getUserBrief(uid: string): Promise<UserBrief> {
+  if (!uid) return { label: 'user', photoURL: null };
+  const cached = userBriefCache.get(uid);
   if (cached) return cached;
   try {
     const snap = await usersCol().doc(uid).get();
@@ -381,11 +505,18 @@ export async function getUserLabel(uid: string): Promise<string> {
       (data.displayName as string | undefined)?.trim() ||
       (data.username as string | undefined)?.trim() ||
       `User ${uid.slice(0, 6)}`;
-    userLabelCache.set(uid, label);
-    return label;
+    const photoURL = ((data.photoURL as string | undefined) ?? '').trim() || null;
+    const brief: UserBrief = { label, photoURL };
+    userBriefCache.set(uid, brief);
+    return brief;
   } catch {
-    return `User ${uid.slice(0, 6)}`;
+    return { label: `User ${uid.slice(0, 6)}`, photoURL: null };
   }
+}
+
+export async function getUserLabel(uid: string): Promise<string> {
+  const brief = await getUserBrief(uid);
+  return brief.label;
 }
 
 export async function ensureUserDoc() {
@@ -461,7 +592,7 @@ export async function uploadVideo(args: UploadVideoArgs) {
   onProgress?.({ phase: 'finalize', percent: 0 });
   const downloadURL = await ref.getDownloadURL();
 
-  const tags = hashtags ?? extractHashtags(caption);
+  const tags = normaliseHashtags(hashtags ?? extractHashtags(caption));
   const handles = mentions ?? extractMentions(caption);
   // Denormalised tokens for the W3 search-by-caption query. Stored on the
   // video doc at write time so the client can do `array-contains` instead of

@@ -4,6 +4,7 @@ import { getUserLabel, usersCol } from './firestore';
 export type UserProfileSummary = {
   uid: string;
   displayName: string | null;
+  username: string | null;
   photoURL: string | null;
   bio: string | null;
 };
@@ -32,6 +33,7 @@ export function useUserProfile(uid: string | null | undefined): UserProfileSumma
         const summary: UserProfileSummary = {
           uid,
           displayName: (d.displayName as string) ?? null,
+          username: (d.username as string) ?? null,
           photoURL: (d.photoURL as string) ?? null,
           bio: (d.bio as string) ?? null,
         };

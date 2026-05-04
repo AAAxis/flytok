@@ -10,7 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -21,12 +21,17 @@ import {
   unfollow,
   type VideoDoc,
 } from '@/lib/firestore';
-import { useUserLabel, useUserProfile } from '@/lib/useUserLabel';
+import { ensureThread } from '@/lib/messaging';
+import { useUserProfile } from '@/lib/useUserLabel';
 import { VideoGrid } from '@/components/VideoGrid';
 import { FollowListSheet } from '@/components/FollowListSheet';
 import { colors } from '@/lib/theme';
 import { applyTheme, useUserTheme } from '@/lib/theme/userTheme';
 import { dicebearURL } from '@/lib/avatars';
+
+const COVER_VISIBLE = 200;
+const AVATAR_SIZE = 96;
+const AVATAR_OVERLAP = AVATAR_SIZE / 2;
 
 export default function UserProfile() {
   const { uid } = useLocalSearchParams<{ uid: string }>();
@@ -34,13 +39,13 @@ export default function UserProfile() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const profile = useUserProfile(uid);
-  const handle = useUserLabel(uid);
 
   const [videos, setVideos] = useState<VideoDoc[]>([]);
   const [counts, setCounts] = useState({ following: 0, followers: 0 });
   const [following, setFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [openingChat, setOpeningChat] = useState(false);
   const [followList, setFollowList] = useState<null | 'following' | 'followers'>(null);
 
   const isMe = me?.uid === uid;
@@ -60,7 +65,6 @@ export default function UserProfile() {
     load().finally(() => setLoading(false));
   }, [load]);
 
-  // Live-update following count from this user's /following subcollection.
   useEffect(() => {
     if (!uid) return;
     return followingCol(uid).onSnapshot(
@@ -69,7 +73,6 @@ export default function UserProfile() {
     );
   }, [uid]);
 
-  // Live-update followers count from this user's /followers subcollection.
   useEffect(() => {
     if (!uid) return;
     return followersCol(uid).onSnapshot(
@@ -99,6 +102,19 @@ export default function UserProfile() {
     }
   }
 
+  async function openChat() {
+    if (!me || !uid || isMe || openingChat) return;
+    setOpeningChat(true);
+    try {
+      const id = await ensureThread(uid);
+      router.push(`/chat/${id}`);
+    } catch (err) {
+      console.warn('[profile] ensureThread failed', err);
+    } finally {
+      setOpeningChat(false);
+    }
+  }
+
   if (!uid) {
     return (
       <View style={styles.center}>
@@ -107,73 +123,109 @@ export default function UserProfile() {
     );
   }
 
+  // Same rule as own profile: top-bar handle is the @username, NEVER the
+  // displayName. Falls back to a uid stub for legacy accounts.
+  const topHandle = profile?.username ?? `user_${uid.slice(0, 6)}`;
+  const nameOnCard = profile?.displayName?.trim() || `@${topHandle}`;
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerTitle: `@${handle}`,
-          headerStyle: { backgroundColor: colors.bg },
-          headerTitleStyle: { color: colors.text },
-          headerTintColor: colors.text,
-          headerBackTitle: '',
-          headerBackButtonDisplayMode: 'minimal',
-        }}
-      />
+    <View style={styles.root}>
+      <Stack.Screen options={{ headerShown: false }} />
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 60 }]}>
-        <ThemedHeader
+        <Cover
           backgroundColor={themed.headerBackgroundColor}
           backgroundImageURL={themed.headerBackgroundImageURL}
-        >
-          {avatarUri ? (
-            <Image source={{ uri: avatarUri }} style={[styles.avatarImage, themed.avatarBorder]} />
-          ) : (
-            <View style={[styles.avatar, themed.avatarBorder]}>
-              <Ionicons name="person" size={36} color={colors.text} />
-            </View>
-          )}
+          topInset={insets.top}
+        />
 
-          <Text style={styles.displayName}>{profile?.displayName ?? handle}</Text>
-          {profile?.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
-
-          <View style={styles.statsRow}>
-            <Stat label="Posts" value={videos.length} />
-            <Stat
-              label="Following"
-              value={counts.following}
-              onPress={() => setFollowList('following')}
-            />
-            <Stat
-              label="Followers"
-              value={counts.followers}
-              onPress={() => setFollowList('followers')}
-            />
+        <View style={[styles.topBarOverlay, { top: insets.top + 8 }]} pointerEvents="box-none">
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={10}
+            style={[styles.iconBtn, { backgroundColor: themed.accentColor }]}
+          >
+            <Ionicons name="chevron-back" size={20} color={colors.bg} />
+          </Pressable>
+          <View style={styles.handlePill}>
+            <Text style={styles.handlePillText} numberOfLines={1}>
+              @{topHandle}
+            </Text>
           </View>
+          <View style={styles.iconBtnSpacer} />
+        </View>
 
-          {!isMe && (
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={[styles.avatarImage, styles.avatarOverlap]} />
+        ) : (
+          <View style={[styles.avatarPlaceholder, styles.avatarOverlap]}>
+            <Ionicons name="person" size={36} color={colors.text} />
+          </View>
+        )}
+
+        <View style={styles.identity}>
+          <Text style={styles.displayName} numberOfLines={1}>
+            {nameOnCard}
+          </Text>
+          {profile?.bio ? (
+            <Text style={styles.bio} numberOfLines={2}>
+              {profile.bio}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={styles.statsCard}>
+          <Stat label="Posts" value={videos.length} />
+          <StatDivider />
+          <Stat
+            label="Following"
+            value={counts.following}
+            onPress={() => setFollowList('following')}
+          />
+          <StatDivider />
+          <Stat
+            label="Followers"
+            value={counts.followers}
+            onPress={() => setFollowList('followers')}
+          />
+        </View>
+
+        {!isMe && (
+          <View style={styles.actionsRow}>
             <Pressable
               onPress={toggleFollow}
               disabled={busy}
               style={({ pressed }) => [
-                styles.followButton,
-                { backgroundColor: themed.accentColor },
-                following && styles.followingButton,
-                pressed && styles.followPressed,
+                styles.actionBtn,
+                following ? styles.actionBtnSecondary : { backgroundColor: themed.accentColor },
+                pressed && styles.actionPressed,
               ]}
             >
               {busy ? (
                 <ActivityIndicator color={following ? colors.text : colors.bg} />
               ) : (
-                <Text
-                  style={[styles.followText, following && styles.followingText]}
-                >
+                <Text style={[styles.actionText, !following && { color: colors.bg }]}>
                   {following ? 'Following' : 'Follow'}
                 </Text>
               )}
             </Pressable>
-          )}
-        </ThemedHeader>
+            <Pressable
+              onPress={openChat}
+              disabled={openingChat}
+              style={({ pressed }) => [
+                styles.actionBtn,
+                styles.actionBtnSecondary,
+                pressed && styles.actionPressed,
+              ]}
+            >
+              {openingChat ? (
+                <ActivityIndicator color={colors.text} />
+              ) : (
+                <Text style={styles.actionText}>Message</Text>
+              )}
+            </Pressable>
+          </View>
+        )}
 
         <View style={styles.divider} />
 
@@ -198,32 +250,32 @@ export default function UserProfile() {
         visible={followList !== null}
         onClose={() => setFollowList(null)}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
-function ThemedHeader({
+function Cover({
   backgroundColor,
   backgroundImageURL,
-  children,
+  topInset,
 }: {
   backgroundColor: string;
   backgroundImageURL: string | null;
-  children: React.ReactNode;
+  topInset: number;
 }) {
+  const height = COVER_VISIBLE + topInset;
   if (backgroundImageURL) {
     return (
       <ImageBackground
         source={{ uri: backgroundImageURL }}
-        style={styles.headerArea}
-        imageStyle={styles.headerBgImage}
+        style={[styles.cover, { height }]}
+        imageStyle={styles.coverImage}
       >
-        <View style={styles.headerScrim} />
-        <View style={styles.headerContent}>{children}</View>
+        <View style={styles.coverScrim} />
       </ImageBackground>
     );
   }
-  return <View style={[styles.headerArea, { backgroundColor }]}>{children}</View>;
+  return <View style={[styles.cover, { height, backgroundColor }]} />;
 }
 
 function Stat({
@@ -249,8 +301,12 @@ function Stat({
   );
 }
 
+function StatDivider() {
+  return <View style={styles.statDivider} />;
+}
+
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  root: { flex: 1, backgroundColor: colors.bg },
   center: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -259,61 +315,110 @@ const styles = StyleSheet.create({
   },
   empty: { color: colors.textDim, fontSize: 13 },
   content: {},
-  headerArea: {
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 24,
-    gap: 8,
-    overflow: 'hidden',
-  },
-  headerBgImage: { resizeMode: 'cover' },
-  headerScrim: {
+
+  cover: { width: '100%', overflow: 'hidden' },
+  coverImage: { resizeMode: 'cover' },
+  coverScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(0,0,0,0.18)',
   },
-  headerContent: { alignItems: 'center', width: '100%', gap: 8 },
-  avatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: colors.surfaceAlt,
+
+  topBarOverlay: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  iconBtnSpacer: { width: 36, height: 36 },
+  handlePill: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    maxWidth: 220,
+  },
+  handlePillText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+
+  avatarOverlap: { alignSelf: 'center', marginTop: -AVATAR_OVERLAP },
   avatarImage: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
     backgroundColor: colors.surfaceAlt,
+    borderColor: colors.bg,
+    borderWidth: 3,
   },
-  displayName: { color: colors.text, fontSize: 18, fontWeight: '700', marginTop: 8 },
-  bio: { color: colors.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
-  statsRow: { flexDirection: 'row', gap: 32, marginTop: 12 },
-  stat: { alignItems: 'center' },
-  statValue: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  statLabel: { color: colors.textDim, fontSize: 12 },
-  followButton: {
-    marginTop: 14,
-    paddingHorizontal: 36,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: colors.accent,
+  avatarPlaceholder: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.bg,
+    borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 160,
   },
-  followingButton: {
+
+  identity: { alignItems: 'center', paddingHorizontal: 24, marginTop: 10 },
+  displayName: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  bio: { color: colors.textMuted, fontSize: 13, textAlign: 'center', marginTop: 4 },
+
+  statsCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginTop: 16,
+    marginHorizontal: 16,
+    paddingVertical: 12,
+  },
+  stat: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  statValue: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  statLabel: { color: colors.textDim, fontSize: 11, marginTop: 2 },
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginVertical: 4,
+  },
+
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+    marginHorizontal: 16,
+  },
+  actionBtn: {
+    flex: 1,
+    height: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 12,
+  },
+  actionBtnSecondary: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
   },
-  followPressed: { opacity: 0.85 },
-  followText: { color: colors.bg, fontWeight: '600', fontSize: 14 },
-  followingText: { color: colors.text },
+  actionPressed: { opacity: 0.85 },
+  actionText: { color: colors.text, fontSize: 13, fontWeight: '600' },
+
   divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
-    marginTop: 4,
+    marginTop: 16,
   },
   loading: { paddingVertical: 60, alignItems: 'center' },
 });

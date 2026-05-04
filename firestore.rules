@@ -188,6 +188,29 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // === usernames/{nameLower} ===
+    // Reservation collection — the existence of a doc proves a handle is
+    // claimed. Doc id IS the lowercase username; body is `{ uid }`. Writes
+    // are owner-only and gated on the same regex the client validates with
+    // (mobile/lib/username.ts). Reads are public so the EditProfileSheet
+    // taken-check works without auth round-trips through Cloud Functions.
+    match /usernames/{nameLower} {
+      function nameOk() {
+        return nameLower.matches('^[a-z][a-z0-9._]{1,22}[a-z0-9_]$')
+               && !nameLower.matches('.*\\.\\..*');
+      }
+      allow read:   if signedIn();
+      allow create: if signedIn()
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.keys().hasOnly(['uid'])
+                    && nameOk();
+      allow delete: if signedIn()
+                    && resource.data.uid == request.auth.uid;
+      // Updates are forbidden — username changes go via delete + create in
+      // the same transaction (claimUsername in mobile/lib/firestore.ts).
+      allow update: if false;
+    }
+
     // === reports/{reportId} ===
     // Created by any signed-in user; only admins (moderation console) read.
     match /reports/{reportId} {

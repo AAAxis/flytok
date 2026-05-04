@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
-import { ensureUserDoc } from '@/lib/firestore';
+import { ensureUserDoc, ensureUsername } from '@/lib/firestore';
 import {
   registerFcmTokenForUser,
   unregisterCurrentDeviceToken,
@@ -30,7 +30,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUserId(u?.uid ?? null);
       if (u) {
         ensureUserDoc()
-          .then(() => registerFcmTokenForUser())
+          .then(() => {
+            // ensureUsername reads the user doc, so it must run AFTER
+            // ensureUserDoc has merged the latest displayName.
+            ensureUsername().catch(() => {});
+            return registerFcmTokenForUser();
+          })
           .catch(() => {});
         try {
           const tokenResult = await u.getIdTokenResult();
