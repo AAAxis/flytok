@@ -1,7 +1,7 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { ActivityIndicator, AppState, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, LogBox, Platform, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -31,6 +31,17 @@ import { colors } from '@/lib/theme';
 
 // Must be registered before any RemoteMessage can arrive.
 setupBackgroundMessageHandler();
+
+// expo's withDevTools wrapper calls `useKeepAwake` in dev mode to stop the
+// device from sleeping while Metro is connected. On Android the native call
+// loses a race with Activity attachment on cold start and rejects with
+// "Unable to activate keep awake" — RN reports it as an unhandled promise.
+// Subsequent app-focus events re-activate keep-awake, so the dev experience
+// is unaffected; the rejection is just noise. Silence it explicitly rather
+// than letting the LogBox banner blanket the dev session.
+if (__DEV__) {
+  LogBox.ignoreLogs([/Unable to activate keep awake/]);
+}
 
 function useTrackingPrompt() {
   useEffect(() => {
