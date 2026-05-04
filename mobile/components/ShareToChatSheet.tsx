@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import {
   ActivityIndicator,
   Image,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -22,16 +23,26 @@ import { colors } from '@/lib/theme';
 
 type Profile = { displayName: string | null; photoURL: string | null };
 
+// Public-web URL template for a single video. The web reference app at
+// flytok-main routes /v/:id to the same video, so this link is stable.
+function defaultExternalShare(video: VideoDoc): { message: string; url: string } {
+  const url = `https://flytok.vercel.app/v/${video.id}`;
+  const message = video.caption ? `${video.caption}\n\n${url}` : url;
+  return { message, url };
+}
+
 export function ShareToChatSheet({
   video,
   visible,
   onClose,
   onSent,
+  externalShare,
 }: {
   video: VideoDoc;
   visible: boolean;
   onClose: () => void;
   onSent?: () => void;
+  externalShare?: { message: string; url: string };
 }) {
   const me = auth().currentUser;
   const [threads, setThreads] = useState<ThreadDoc[]>([]);
@@ -68,6 +79,21 @@ export function ShareToChatSheet({
     } finally {
       setBusy(null);
     }
+  }
+
+  const externalPayload = useMemo(
+    () => externalShare ?? defaultExternalShare(video),
+    [externalShare, video],
+  );
+
+  async function shareExternally() {
+    try {
+      await Share.share({ message: externalPayload.message, url: externalPayload.url });
+    } catch {
+      // user cancelled or platform error — leave the sheet open
+      return;
+    }
+    onClose();
   }
 
   // Profiles for thread counterparties (label + avatar).
@@ -123,21 +149,35 @@ export function ShareToChatSheet({
         keyExtractor={(t) => t.id}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
-          me && video.ownerId !== me.uid ? (
+          <View>
             <Pressable
-              onPress={shareToVideoOwner}
+              onPress={shareExternally}
               style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
             >
-              <View style={styles.avatar}>
-                <Ionicons name="paper-plane" size={18} color={colors.text} />
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Ionicons name="paper-plane-outline" size={18} color={colors.text} />
               </View>
               <View style={styles.rowText}>
-                <Text style={styles.name}>Send to creator</Text>
-                <Text style={styles.sub}>Start a new chat</Text>
+                <Text style={styles.name}>Share externally</Text>
+                <Text style={styles.sub}>Copy link, send via other apps</Text>
               </View>
-              {busy === video.ownerId && <ActivityIndicator color={colors.accent} />}
             </Pressable>
-          ) : null
+            {me && video.ownerId !== me.uid ? (
+              <Pressable
+                onPress={shareToVideoOwner}
+                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+              >
+                <View style={styles.avatar}>
+                  <Ionicons name="paper-plane" size={18} color={colors.text} />
+                </View>
+                <View style={styles.rowText}>
+                  <Text style={styles.name}>Send to creator</Text>
+                  <Text style={styles.sub}>Start a new chat</Text>
+                </View>
+                {busy === video.ownerId && <ActivityIndicator color={colors.accent} />}
+              </Pressable>
+            ) : null}
+          </View>
         }
         renderItem={({ item }) => {
           const p = profileFor(item);

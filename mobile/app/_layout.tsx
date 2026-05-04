@@ -1,6 +1,6 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, Platform, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -15,6 +15,7 @@ import {
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { setUserProperty } from '@/lib/analytics';
 import { setupBackgroundMessageHandler } from '@/lib/messaging';
+import { getHasSeenOnboarding } from '@/lib/onboarding';
 import { colors } from '@/lib/theme';
 
 // Silence the v22 React Native Firebase namespaced-API deprecation warnings.
@@ -120,14 +121,47 @@ function Gate() {
   const router = useRouter();
   useChatPushHandlers();
 
+  // `seen` is null until the AsyncStorage hydrate completes. Holding the
+  // spinner up until then prevents a one-frame flash of /login on cold start
+  // for first-launch users (who must see /onboarding instead).
+  const [seen, setSeen] = useState<boolean | null>(null);
   useEffect(() => {
-    if (loading) return;
-    const onLogin = segments[0] === 'login';
-    if (!user && !onLogin) router.replace('/login');
-    else if (user && onLogin) router.replace('/');
-  }, [user, loading, segments, router]);
+    let cancelled = false;
+    getHasSeenOnboarding().then((v) => {
+      if (!cancelled) setSeen(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  if (loading) return <Spinner />;
+  // After logout, AuthContext clears the flag so the next visit re-runs
+  // onboarding — re-hydrate when the auth principal disappears.
+  useEffect(() => {
+    if (user) return;
+    let cancelled = false;
+    getHasSeenOnboarding().then((v) => {
+      if (!cancelled) setSeen(v);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (loading || seen === null) return;
+    const onLogin = segments[0] === 'login';
+    const onOnboarding = segments[0] === 'onboarding';
+    if (!user && !seen && !onOnboarding) {
+      router.replace('/onboarding');
+    } else if (!user && seen && !onLogin && !onOnboarding) {
+      router.replace('/login');
+    } else if (user && (onLogin || onOnboarding)) {
+      router.replace('/');
+    }
+  }, [user, loading, seen, segments, router]);
+
+  if (loading || seen === null) return <Spinner />;
 
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />

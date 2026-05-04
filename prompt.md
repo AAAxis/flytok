@@ -108,13 +108,16 @@ entry in `docs/log.md`.
       device smoke test still pending — see `docs/log.md` Wave 6
       section.)*
 
-- [ ] **Wave 7 — Pre-auth onboarding + share-to-chat unification** —
+- [x] **Wave 7 — Pre-auth onboarding + share-to-chat unification** —
       `docs/10-wave-7-onboarding-share.md`
       Two-screen onboarding before login on first launch (and after
       every logout) — required to unblock the Apple resubmission. Make
       the in-feed Share button open a single sheet with both
       "Share externally" and the existing thread list (drop the
-      hidden long-press gesture).
+      hidden long-press gesture). *(Code shipped 2026-05-04, app boots
+      clean on `0010934AE002636`. Cold-start onboarding flow + post-
+      logout re-onboarding device walkthrough still pending — see
+      `docs/log.md` Wave 7 section.)*
 
 - [ ] **Wave 8 — Block / restrict full audit** —
       `docs/11-wave-8-block-audit.md`

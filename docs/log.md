@@ -851,3 +851,159 @@ marker pushes `/posts/{me.uid}?start={vid}&source=mine`.
      the user's feed at that video.
 2. Confirm cold-start FCM tap still lands on `/chat/{threadId}` (no
    change expected — `app/chat/[threadId].tsx` did not move).
+
+## 2026-05-04 — Wave 7 (pre-auth onboarding + share-to-chat unification)
+
+Spec: `docs/10-wave-7-onboarding-share.md`. Master design:
+`docs/superpowers/specs/2026-05-04-pre-launch-fixes-design.md`. Built and
+installed on `0010934AE002636` via `ANDROID_SERIAL=… npx expo run:android`
+(BUILD SUCCESSFUL in 11s, dev client launched, PID 24894 stable; `adb
+logcat -b crash` empty, no `FATAL EXCEPTION` / `OutOfMemoryError` /
+unhandled-exception lines on `--pid=24894`). AsyncStorage autolinked
+through Expo modules — no native config change beyond the new module
+linkage, no `expo prebuild` run.
+
+### Onboarding (2-screen pre-auth carousel)
+
+`@react-native-async-storage/async-storage@^2.0.0` is the new dep. We
+wrap it in `mobile/lib/onboarding.ts` (`getHasSeenOnboarding` /
+`setHasSeenOnboarding`) so the auth gate doesn't import AsyncStorage
+directly and so we can swap storage backends later without touching
+callers. The persisted key is `flytok.hasSeenOnboarding.v1` — bumping
+the suffix is how we'll force a re-walkthrough if onboarding ever
+ships a different message.
+
+`mobile/app/onboarding.tsx` is a top-level Stack route (`SafeAreaView`
++ horizontal `FlatList pagingEnabled`) with two `OnboardingSlide`
+cells. Paginator is two pill-style dots above the action bar (the
+active one widens + flips to `colors.accent`). Action bar is
+`Skip` (left, ghost) + primary pill `Continue` / `Get started` (right,
+last-page sensitive). Both Skip and Get started call
+`setHasSeenOnboarding(true)` then `router.replace('/login')`. Continue
+calls `scrollToIndex({ index: index + 1 })`. Viewability threshold is
+60% so the dot transitions cleanly mid-swipe.
+
+Hero illustrations are inline JSX (concentric accent halos + a 120 dp
+center pill in `colors.accent` + three `colors.surface` satellite
+chips around the perimeter). Slide 1: `compass / videocam / airplane`
+satellites + a `location` glyph centered. Slide 2: `heart /
+paper-plane / bookmark` satellites + `chatbubbles` centered. The slide
+component (`mobile/components/onboarding/OnboardingSlide.tsx`) takes
+the hero as a `ReactNode` slot — the spec asked for SVG/PNG assets but
+`react-native-svg` isn't in the bundle and shipping placeholder PNGs
+that get replaced before submission would just be dead weight. Roman
+swaps each `<DiscoverHero />` / `<ShareHero />` for the final art at
+the same prop site when commissioned.
+
+Copy is the spec's placeholder verbatim (Apple-rejection-blocking
+content, not final): "Discover places worth flying for" + "Browse
+short, punchy travel videos pinned to real-world places. Tap any
+video to see its location on the map." then "Share moments. Chat with
+creators." + "Save the spots you love, message the people who shot
+the videos, and post your own clips when you're on the road." Roman
+to tighten before the resubmit.
+
+### Auth gate hydration (`mobile/app/_layout.tsx::Gate`)
+
+The gate now hydrates `hasSeenOnboarding` from AsyncStorage on mount
+into a `seen: boolean | null` state. Spinner stays up while
+`seen === null` so the cold-start render never flashes `/login` for
+first-launch users (would have been a one-frame regression). A second
+effect re-hydrates the flag whenever `user` becomes null, so logging
+out from `SettingsSheet` properly bounces the user back through
+onboarding instead of hitting the now-stale cached value.
+
+Routing decisions, in order:
+- `!user && !seen && !onOnboarding` → `/onboarding`
+- `!user && seen && !onLogin && !onOnboarding` → `/login`
+- `user && (onLogin || onOnboarding)` → `/`
+
+`AuthContext.logout` now calls `setHasSeenOnboarding(false)` after
+`auth().signOut()`. Account deletion (`deleteAccount` in firestore)
+goes through `auth().onAuthStateChanged` → `user = null` → the
+re-hydrate effect — but the flag stays at its last persisted value
+unless the user took the explicit `Sign out` row. That's intentional:
+a forced session expiry shouldn't restart onboarding, only an
+intentional logout should.
+
+### Share-to-chat unification
+
+`mobile/components/ShareToChatSheet.tsx` is now the only entry point
+for the in-feed Share button. The list header inside the
+`BottomSheetFlatList` is a single `<View>` that holds two rows in
+fixed order:
+
+1. **Share externally** — `paper-plane-outline` icon, "Copy link,
+   send via other apps" subtitle. `onPress` calls
+   `Share.share({ message, url })` with the payload built by the new
+   `defaultExternalShare(video)` helper (the same template the
+   `FeedItem`'s tap-Share flow used to compose inline:
+   `https://flytok.vercel.app/v/${video.id}` + caption prefix). The
+   sheet now owns the URL template, so swapping it out (different
+   domain, deep link scheme, etc.) is a one-file change.
+2. **Send to creator** — unchanged. Hidden when the viewer is the
+   video owner.
+
+Below the header rows, the existing thread list is unchanged. The
+sheet exposes a new `externalShare?: { message: string; url: string }`
+prop for callers that need to override the template (e.g. shared
+posts from search later).
+
+`mobile/components/FeedItem.tsx` lost the inline `Share.share` call
+*and* the `onLongPress` hidden gesture on the Share button. The button
+is now a single `Pressable` with `onPress={() => setShowShare(true)}`
+— one behaviour, no easter-egg. The `Share` import was removed from
+the file (the sheet owns it now).
+
+### Verification
+
+- `npx tsc --noEmit` clean (0 errors, 0 warnings).
+- `npx expo run:android` clean build, debug APK installed and dev
+  client opened on `0010934AE002636` via `flytok://expo-development-client`.
+  `ReactNativeJS: Running "main" with {"rootTag":11}` reached, Legacy
+  Architecture deprecation warning is the only RN log line, no
+  `FATAL` / `OutOfMemoryError` / unhandled-exception lines under
+  `--pid=24894`. PID stable after the dev client opened.
+- **Pending** (manual, mirrors the W6 pattern): full cold-start
+  walkthrough of the new flows on the device. The dev install is
+  currently logged in (W6 install), so the gate routes straight to
+  `/(tabs)`. To verify the carousel itself, Roman needs to
+  `Sign out` from `SettingsSheet` → next launch shows
+  `/onboarding` (the new logout flag reset kicks in).
+
+### Manual follow-ups for Roman (W7)
+
+1. Two-screen onboarding device walkthrough on `0010934AE002636`:
+   - Sign out from Settings.
+   - Kill + reopen app → onboarding screen 1 visible (compass /
+     videocam / airplane satellites; "Discover places worth flying
+     for" copy; paginator dot 1 active; Skip + Continue buttons).
+   - Tap **Continue** → screen 2 (chatbubbles + heart / paper-plane
+     / bookmark satellites; "Share moments. Chat with creators."
+     copy; paginator dot 2 active; Skip + Get started buttons).
+   - Tap **Get started** → routes to `/login`.
+   - Sign back in → lands on `/(tabs)`. Kill + reopen → still
+     `/(tabs)` (no onboarding loop on subsequent launches).
+   - Sign out again → kill + reopen → onboarding screens again
+     (the flag reset is working).
+   - Edge case: on screen 1, tap **Skip** → routes straight to
+     `/login` and persists the flag (next launch bypasses onboarding
+     until the next logout).
+2. Share-button unification on any feed video:
+   - Tap (no long-press) the Share button → `ShareToChatSheet`
+     opens.
+   - Header shows two rows in order: **Share externally** then
+     **Send to creator** (the second one hidden if you're the
+     owner). Below them, the thread list.
+   - Tap **Share externally** → native iOS / Android share sheet
+     appears with `https://flytok.vercel.app/v/{id}` (caption
+     prefixed if present). Cancelling leaves the sheet open;
+     completing dismisses it.
+   - Long-pressing the Share button is now a no-op (no hidden
+     gesture).
+3. Final onboarding artwork: replace each `<DiscoverHero />` /
+   `<ShareHero />` JSX with the commissioned PNG / SVG (the
+   `OnboardingSlide hero` slot accepts any ReactNode, so the asset
+   can be `<Image source={…} />` or a `react-native-svg` tree once
+   that lib is added). Tighten the placeholder copy at the same
+   time — it's the wording Apple will see otherwise.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import auth from '@react-native-firebase/auth';
-import { Alert, Dimensions, Image, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Dimensions, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -335,16 +335,7 @@ export function FeedItem({
             <Text style={styles.actionLabel}>{saved ? 'Saved' : 'Save'}</Text>
           </Pressable>
           <Pressable
-            onPress={async () => {
-              const link = `https://flytok.vercel.app/v/${item.id}`;
-              const message = item.caption ? `${item.caption}\n\n${link}` : link;
-              try {
-                await Share.share({ message, url: link });
-              } catch {
-                // user cancelled
-              }
-            }}
-            onLongPress={() => setShowShare(true)}
+            onPress={() => setShowShare(true)}
             style={styles.actionButton}
             hitSlop={8}
           >

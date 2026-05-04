@@ -6,6 +6,7 @@ import {
   unregisterCurrentDeviceToken,
 } from '@/lib/messaging';
 import { setUserId, track } from '@/lib/analytics';
+import { setHasSeenOnboarding } from '@/lib/onboarding';
 
 type AuthState = {
   user: FirebaseAuthTypes.User | null;
@@ -70,6 +71,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // notifications don't keep arriving for the previous user.
           await unregisterCurrentDeviceToken().catch(() => {});
           await auth().signOut();
+          // Reset onboarding so the next sign-in walks through the carousel
+          // again — required for the Apple resubmission flow.
+          await setHasSeenOnboarding(false);
         },
       }}
     >
