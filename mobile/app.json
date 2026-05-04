@@ -11,6 +11,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.roamrez.flytok",
+      "buildNumber": "2",
       "googleServicesFile": "../firebase/GoogleService-Info.plist",
       "usesAppleSignIn": true,
       "infoPlist": {
@@ -48,6 +49,7 @@
     "plugins": [
       "./plugins/withAndroidLargeHeap.js",
       "./plugins/withGoogleMapsApiKey.js",
+      "./plugins/withIosFmtConstevalFix.js",
       "expo-router",
       [
         "expo-splash-screen",
