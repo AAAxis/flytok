@@ -3,7 +3,6 @@ import auth from '@react-native-firebase/auth';
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   ImageBackground,
   Pressable,
@@ -16,28 +15,26 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  diagnoseSaves,
   followersCol,
   followingCol,
   getFollowCounts,
   getMyVideos,
-  getSavedVideoIds,
-  getVideosByIds,
-  savesCol,
   usersCol,
   type VideoDoc,
 } from '@/lib/firestore';
 import { VideoGrid } from '@/components/VideoGrid';
+import { ProfileVideoMap } from '@/components/profile/ProfileVideoMap';
 import { SettingsSheet } from '@/components/SettingsSheet';
 import { EditProfileSheet } from '@/components/EditProfileSheet';
 import { CustomizeThemeSheet } from '@/components/CustomizeThemeSheet';
 import { FollowListSheet } from '@/components/FollowListSheet';
+import { useUnreadBadge } from '@/lib/messaging';
 import { getCachedProfile, setCachedProfile } from '@/lib/profileCache';
 import { colors } from '@/lib/theme';
 import { applyTheme, useUserTheme } from '@/lib/theme/userTheme';
 import { dicebearURL } from '@/lib/avatars';
 
-type Tab = 'mine' | 'saved';
+type Tab = 'mine' | 'map';
 
 const COVER_VISIBLE = 200;
 const AVATAR_SIZE = 96;
@@ -53,11 +50,11 @@ export default function Profile() {
   const [photoURL, setPhotoURL] = useState<string | null>(cached?.photoURL ?? null);
   const [bio, setBio] = useState<string | null>(cached?.bio ?? null);
   const [mine, setMine] = useState<VideoDoc[]>(cached?.mine ?? []);
-  const [saved, setSaved] = useState<VideoDoc[]>(cached?.saved ?? []);
   const [counts, setCounts] = useState(cached?.counts ?? { following: 0, followers: 0 });
   const [loading, setLoading] = useState(!cached);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>('mine');
+  const unread = useUnreadBadge();
   const [showSettings, setShowSettings] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showCustomize, setShowCustomize] = useState(false);
@@ -70,14 +67,10 @@ export default function Profile() {
 
   const load = useCallback(async () => {
     if (!me) return;
-    const [profileSnap, myVideos, savedIds, followCounts] = await Promise.all([
+    const [profileSnap, myVideos, followCounts] = await Promise.all([
       usersCol().doc(me.uid).get(),
       getMyVideos(me.uid).catch((err) => {
         console.warn('[profile] getMyVideos failed:', err);
-        return [];
-      }),
-      getSavedVideoIds(me.uid).catch((err) => {
-        console.warn('[profile] getSavedVideoIds failed:', err);
         return [];
       }),
       getFollowCounts(me.uid),
@@ -89,18 +82,12 @@ export default function Profile() {
     setBio((profileData.bio as string) ?? null);
     setMine(myVideos);
     setCounts(followCounts);
-    const savedVideos = await getVideosByIds(savedIds).catch((err) => {
-      console.warn('[profile] getVideosByIds failed:', err);
-      return [];
-    });
-    setSaved(savedVideos);
     if (me) {
       setCachedProfile(me.uid, {
         displayName: (profileData.displayName as string) ?? null,
         photoURL: (profileData.photoURL as string) ?? null,
         bio: (profileData.bio as string) ?? null,
         mine: myVideos,
-        saved: savedVideos,
         counts: followCounts,
         fetchedAt: Date.now(),
       });
@@ -110,22 +97,6 @@ export default function Profile() {
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, [load]);
-
-  useEffect(() => {
-    if (!me) return;
-    const flag = `__savesDiagRun_${me.uid}`;
-    const g = globalThis as Record<string, unknown>;
-    if (g[flag]) return;
-    g[flag] = true;
-    diagnoseSaves().then((err) => {
-      if (err) {
-        Alert.alert(
-          'Saves diagnostic',
-          `Saves cannot be persisted:\n\n${err}\n\nFix: publish the Firestore rule for users/{uid}/saves.`,
-        );
-      }
-    });
-  }, [me]);
 
   useEffect(() => {
     if (!me) return;
@@ -140,26 +111,6 @@ export default function Profile() {
     return followersCol(me.uid).onSnapshot(
       (snap) => setCounts((c) => ({ ...c, followers: snap.size })),
       () => {},
-    );
-  }, [me]);
-
-  useEffect(() => {
-    if (!me) return;
-    return savesCol(me.uid).onSnapshot(
-      async (snap) => {
-        const ids = snap.docs.map((d) => d.id);
-        if (!ids.length) {
-          setSaved([]);
-          return;
-        }
-        try {
-          const videos = await getVideosByIds(ids);
-          setSaved(videos);
-        } catch (err) {
-          console.warn('[profile] saves snapshot fetch failed:', err);
-        }
-      },
-      (err) => console.warn('[profile] saves listener error:', err),
     );
   }, [me]);
 
@@ -214,17 +165,29 @@ export default function Profile() {
               ]}
               pointerEvents="box-none"
             >
-              <View style={styles.handlePill}>
-                <Text style={styles.handlePillText} numberOfLines={1}>
-                  @{topHandle}
-                </Text>
-              </View>
               <Pressable
                 onPress={() => setShowSettings(true)}
                 hitSlop={10}
-                style={[styles.menuBtn, { backgroundColor: themed.accentColor }]}
+                style={[styles.iconBtn, { backgroundColor: themed.accentColor }]}
+                accessibilityLabel="Open settings menu"
               >
                 <Ionicons name="menu" size={20} color={colors.bg} />
+              </Pressable>
+              <View style={styles.handleCell} pointerEvents="box-none">
+                <View style={styles.handlePill}>
+                  <Text style={styles.handlePillText} numberOfLines={1}>
+                    @{topHandle}
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => router.push('/inbox' as never)}
+                hitSlop={10}
+                style={[styles.iconBtn, { backgroundColor: themed.accentColor }]}
+                accessibilityLabel="Open direct messages"
+              >
+                <Ionicons name="chatbubble" size={18} color={colors.bg} />
+                {unread > 0 ? <View style={styles.unreadDot} /> : null}
               </Pressable>
             </View>
 
@@ -258,8 +221,6 @@ export default function Profile() {
 
             <View style={styles.statsCard}>
               <Stat label="Posts" value={mine.length} />
-              <StatDivider />
-              <Stat label="Saved" value={saved.length} />
               <StatDivider />
               <Stat
                 label="Following"
@@ -306,9 +267,9 @@ export default function Profile() {
                 onPress={() => setTab('mine')}
               />
               <TabButton
-                active={tab === 'saved'}
-                icon="bookmark-outline"
-                onPress={() => setTab('saved')}
+                active={tab === 'map'}
+                icon="map-outline"
+                onPress={() => setTab('map')}
               />
             </View>
 
@@ -321,11 +282,11 @@ export default function Profile() {
                 }}
               />
             ) : (
-              <VideoGrid
-                videos={saved}
-                emptyLabel="Nothing saved yet"
-                onPress={(v) => {
-                  router.push(`/posts/${me.uid}?start=${v.id}&source=saved` as never);
+              <ProfileVideoMap
+                videos={mine}
+                loading={loading}
+                onPressVideo={(v) => {
+                  router.push(`/posts/${me.uid}?start=${v.id}&source=mine` as never);
                 }}
               />
             )}
@@ -447,8 +408,13 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
+  },
+  handleCell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   handlePill: {
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -458,12 +424,24 @@ const styles = StyleSheet.create({
     maxWidth: 220,
   },
   handlePillText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  menuBtn: {
+  iconBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  unreadDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ef4444',
+    borderColor: colors.bg,
+    borderWidth: 2,
   },
 
   avatarWrap: {

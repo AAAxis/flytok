@@ -21,7 +21,7 @@ import {
   useThreadList,
   type ThreadDoc,
 } from '@/lib/messaging';
-import { getBlockedIds, getUserLabel } from '@/lib/firestore';
+import { getBlockedIds, getUserBrief, type UserBrief } from '@/lib/firestore';
 import {
   getFollowedUserProfiles,
   searchUsersByHandle,
@@ -67,7 +67,7 @@ export default function Inbox() {
     });
   }, [threads, blocked, me]);
 
-  const [labels, setLabels] = useState<Record<string, string>>({});
+  const [briefs, setBriefs] = useState<Record<string, UserBrief>>({});
   useEffect(() => {
     if (!me) return;
     const otherUids = Array.from(
@@ -79,21 +79,21 @@ export default function Inbox() {
     );
     if (otherUids.length === 0) return;
     Promise.all(
-      otherUids.map((uid) => getUserLabel(uid).then((label) => [uid, label] as const)),
+      otherUids.map((uid) => getUserBrief(uid).then((brief) => [uid, brief] as const)),
     ).then((entries) => {
-      setLabels((prev) => {
+      setBriefs((prev) => {
         const next = { ...prev };
-        for (const [uid, label] of entries) next[uid] = label;
+        for (const [uid, brief] of entries) next[uid] = brief;
         return next;
       });
     });
   }, [filteredThreads, me]);
 
-  function otherLabel(t: ThreadDoc): string {
-    if (!me) return '';
+  function otherInfo(t: ThreadDoc): UserBrief {
+    if (!me) return { label: '', photoURL: null };
     const otherUid = t.participants?.find((p) => p !== me.uid);
-    if (!otherUid) return '';
-    return labels[otherUid] ?? `User ${otherUid.slice(0, 6)}`;
+    if (!otherUid) return { label: '', photoURL: null };
+    return briefs[otherUid] ?? { label: `User ${otherUid.slice(0, 6)}`, photoURL: null };
   }
 
   return (
@@ -114,16 +114,19 @@ export default function Inbox() {
           data={filteredThreads}
           keyExtractor={(t) => t.id}
           contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 60 }]}
-          renderItem={({ item }) =>
-            me ? (
+          renderItem={({ item }) => {
+            if (!me) return null;
+            const info = otherInfo(item);
+            return (
               <ThreadRow
                 thread={item}
                 myUid={me.uid}
-                otherLabel={otherLabel(item)}
+                otherLabel={info.label}
+                otherPhotoURL={info.photoURL}
                 onPress={() => router.push(`/chat/${item.id}`)}
               />
-            ) : null
-          }
+            );
+          }}
           ListEmptyComponent={
             <Text style={styles.empty}>
               No conversations yet. Tap the pencil to start one.

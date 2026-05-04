@@ -1,4 +1,4 @@
-# Flytok / Roamrez — Master Brief (v2 features)
+# Flytok / Roamrez — Master Brief (V2 features + pre-launch fixes)
 
 > Paste this into Claude Code at the start of a new session, or just say
 > *"read prompt.md and execute the next wave"*. This brief assumes
@@ -47,8 +47,19 @@
 The full v2 design is at:
 **`docs/superpowers/specs/2026-05-03-flytok-v2-features-design.md`**
 
-It covers 5 waves, data model changes, risk register, and per-wave
-specs. Read it before starting any wave.
+It covers Waves 1–4 (V2 features) + the now-renumbered Wave 9
+(Fastlane). Read it before starting any V2 wave.
+
+## Pre-launch fixes (master spec)
+
+Drafted 2026-05-04 to cover six fixes the founder flagged before
+re-submitting to Google Play (and Apple, which rejected the first
+build for missing onboarding):
+
+**`docs/superpowers/specs/2026-05-04-pre-launch-fixes-design.md`**
+
+It expands into Waves 6, 7, 8 below. Read it before starting any
+of the new waves.
 
 ## Wave checklist
 
@@ -86,7 +97,34 @@ entry in `docs/log.md`.
       `react-native-video-trim` / `ffmpeg-kit-react-native` analysis
       and full follow-up list.)*
 
-- [ ] **Wave 5 — Fastlane + Store submission** *(deferred)* —
+- [x] **Wave 6 — Saved tab + profile map + DMs entry** —
+      `docs/09-wave-6-saved-tab-profile-map.md`
+      Swap the Inbox tab for a Saved-posts tab. Move the Inbox screen
+      out of `(tabs)/` and reach it from a new DM icon on the profile
+      top-right. Replace the in-profile *Saved* sub-tab with a
+      clustered map of the user's own posts (with pro empty states for
+      "no posts yet" and "no location on the posts"). *(Code shipped
+      2026-05-04, app boots clean on `0010934AE002636`. Two-account
+      device smoke test still pending — see `docs/log.md` Wave 6
+      section.)*
+
+- [ ] **Wave 7 — Pre-auth onboarding + share-to-chat unification** —
+      `docs/10-wave-7-onboarding-share.md`
+      Two-screen onboarding before login on first launch (and after
+      every logout) — required to unblock the Apple resubmission. Make
+      the in-feed Share button open a single sheet with both
+      "Share externally" and the existing thread list (drop the
+      hidden long-press gesture).
+
+- [ ] **Wave 8 — Block / restrict full audit** —
+      `docs/11-wave-8-block-audit.md`
+      Audit every surface (feed, map, inbox, search, comments, follow
+      list, chat thread, place card) with the Firebase MCP and confirm
+      a blocked user's content is gone end-to-end. Add a Block /
+      Report button on the visiting-user profile and a "you blocked
+      this user" banner there + on the chat composer.
+
+- [ ] **Wave 9 — Fastlane + Store submission** *(deferred — was Wave 5)* —
       `docs/08-wave-5-fastlane.md`
       ⛔ PAUSE GATE — needs Apple Developer account, ASC API key,
       Android upload keystore, Play Console service account, store
@@ -96,10 +134,11 @@ entry in `docs/log.md`.
 
 1. Read `~/.claude/CLAUDE.md` (global rules).
 2. Read this file (`prompt.md`) to find the next unchecked wave.
-3. Read the wave spec doc in full (e.g. `docs/04-wave-1-foundation.md`).
-4. Read the master design at
-   `docs/superpowers/specs/2026-05-03-flytok-v2-features-design.md`
-   to understand the wave's place in the bigger plan.
+3. Read the wave spec doc in full (e.g. `docs/09-wave-6-...md` for the
+   next unchecked wave).
+4. Read the relevant master design in full:
+   - V2 waves (1–4, 9): `docs/superpowers/specs/2026-05-03-flytok-v2-features-design.md`.
+   - Pre-launch waves (6, 7, 8): `docs/superpowers/specs/2026-05-04-pre-launch-fixes-design.md`.
 5. Read `docs/log.md` for context on what shipped before.
 6. **Pre-flight checks** (parallel where possible):
    - `claude mcp list` → confirm `firebase: ✓ Connected`
@@ -132,7 +171,11 @@ entry in `docs/log.md`.
 | `docs/05-wave-2-map-profile.md` | Wave 2 spec. |
 | `docs/06-wave-3-search.md` | Wave 3 spec. |
 | `docs/07-wave-4-upload-v2.md` | Wave 4 spec. |
-| `docs/08-wave-5-fastlane.md` | Wave 5 spec. |
+| `docs/09-wave-6-saved-tab-profile-map.md` | Wave 6 spec (pre-launch fix). |
+| `docs/10-wave-7-onboarding-share.md` | Wave 7 spec (pre-launch fix). |
+| `docs/11-wave-8-block-audit.md` | Wave 8 spec (pre-launch fix). |
+| `docs/08-wave-5-fastlane.md` | Wave 9 spec (Fastlane — renumbered, deferred). |
+| `docs/superpowers/specs/2026-05-04-pre-launch-fixes-design.md` | Pre-launch master design (covers Waves 6–8). |
 | `docs/00-previous-session-summary.md` | Sessions 0–1 context. |
 | `docs/log.md` | Append-only dev log. |
 | `docs/01-dm-implementation.md` | DM refactor spec from session 2 (already shipped). |

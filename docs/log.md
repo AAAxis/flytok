@@ -734,3 +734,120 @@ before running it.
    deploys are live (golden path: trim + library track → success
    screen; edge cases: device-audio upload, original audio with no
    selection, mid-upload cancel).
+
+## 2026-05-04 — Wave 6 (saved tab + profile map + DMs entry)
+
+Spec: `docs/09-wave-6-saved-tab-profile-map.md`. Master design:
+`docs/superpowers/specs/2026-05-04-pre-launch-fixes-design.md`. Built and
+installed on `0010934AE002636` via `ANDROID_SERIAL=… npx expo run:android`
+(BUILD SUCCESSFUL, dev client launched, PID 24177 stable; `adb logcat -b
+crash` empty, no `FATAL EXCEPTION` / `OutOfMemoryError` in the main log).
+No native config changed this wave so no prebuild.
+
+### Tab restructure
+
+Bottom tab bar is now `Feed | Map | + | Saved | Profile`. The Inbox tab
+is gone — its file moved from `mobile/app/(tabs)/inbox.tsx` to
+`mobile/app/inbox.tsx` so it is a top-level stack screen. Deep-link
+routing from FCM (`/chat/{threadId}`) is unaffected; the chat screen
+file did not move. The `useUnreadBadge` hook is no longer consumed in
+`(tabs)/_layout.tsx` — the tab badge is gone with the tab.
+
+### Saved tab
+
+`mobile/app/(tabs)/saved.tsx` is a new top-level tab. It subscribes to
+`savesCol(me.uid).onSnapshot` (same pattern the profile screen used
+before this wave) and resolves the saved video ids to `VideoDoc[]` via
+`getVideosByIds`. Renders `<VideoGrid>` with the empty-state copy
+"Nothing saved yet". Pull-to-refresh re-runs an ordered query; tapping a
+tile pushes `/posts/{me.uid}?start={vid}&source=saved` (unchanged URL
+contract). Safe-area insets respected on top + bottom.
+
+### Profile top bar
+
+The profile top bar moved from a 2-cell `[handle][burger]` layout to a
+3-cell `[burger][@handle (centered)][DM icon]` layout. The handle pill
+now sits in the centered cell (a flex-1 container with
+`alignItems: 'center'`), so it visually centers regardless of the icon
+button widths on either side.
+
+The DM icon is a chatbubble inside the same rounded-button shape as the
+existing burger menu, themed via `themed.accentColor`. Tapping it
+pushes `/inbox` (the now-top-level stack screen). When
+`useUnreadBadge() > 0`, an 8 px red dot (`#ef4444`) renders on the
+top-right of the icon — no number, just a binary indicator. The hook
+moved from `(tabs)/_layout.tsx` (where it drove the dropped tab badge)
+to here.
+
+The profile *Saved* stat card column is gone — the stats card now reads
+`Posts | Following | Followers`. The local `saved` state, the
+`savesCol` snapshot listener, the `getSavedVideoIds` /
+`getVideosByIds` calls in `load()`, and the one-shot `diagnoseSaves`
+diagnostic Alert all moved out (saves are now the Saved tab's
+concern). `lib/profileCache.ts` lost its `saved: VideoDoc[]` field to
+match.
+
+### Profile sub-tabs (Posts | Map)
+
+The bookmark sub-tab is gone — sub-tabs are now `Posts | Map` (icons
+`grid-outline` and `map-outline`). Tab type union was renamed
+`'mine' | 'saved'` → `'mine' | 'map'`.
+
+`mobile/components/profile/ProfileVideoMap.tsx` is a new pure-viewer
+clustered map of the user's own posts. Built on the same
+`react-native-map-clustering` + `DARK_MAP_STYLE` + `userInterfaceStyle:
+'dark'` stack as the global Map tab, but with no user-location dot, no
+recenter FAB, no category filter — that stuff is the global map's job.
+On Android it forces `PROVIDER_GOOGLE`; on iOS it lets Apple Maps take
+over.
+
+Three render branches:
+
+- `loading` → centered `ActivityIndicator`.
+- `videos.length === 0` → "No posts yet" empty state with the
+  `cloud-upload-outline` icon.
+- `videos.length > 0` but no `location.latitude` on any → "No location
+  on your posts yet" empty state with `location-outline`.
+- otherwise → `ClusteredMapView` fitted to the marker bounds.
+
+The initial region is computed from the bounding box of the user's
+located videos with a 1.4× padding factor; on `onMapReady`, the map
+calls `fitToCoordinates` with a 60 px edgePadding for a precise fit
+that respects the cluster radius. If only one marker exists,
+`fitToCoordinates` is skipped and the initialRegion uses a 0.05 delta.
+A spinner overlay covers the map until `onMapReady` fires so we don't
+flash the empty grey canvas while Google's tiles load. Markers are
+small accent-colored bubbles with a videocam glyph (a poster
+thumbnail would need a `thumbnailURL` field on every video doc which
+the upload pipeline still doesn't capture — see W2 log). Tapping a
+marker pushes `/posts/{me.uid}?start={vid}&source=mine`.
+
+### Verification
+
+- `npx tsc --noEmit` (mobile) — clean.
+- `npx expo run:android` clean incremental build (`BUILD SUCCESSFUL in
+  4s`, `Task :app:assembleDebug UP-TO-DATE`). Installed APK + opened
+  dev client on `0010934AE002636`. App boots, `ReactNativeJS: Running
+  "main" with {"rootTag":11}` reached, no FATAL / OOM / JS-side errors
+  in `adb logcat --pid=…`.
+- **Pending** (manual): two-account on-device smoke test —
+  Saved tab grid + empty state, profile DM icon → inbox stack, profile
+  Posts/Map sub-tabs, both Map empty states (zero videos / videos with
+  no location), unread dot lights up when a friend sends a message.
+
+### Manual follow-ups for Roman (W6)
+
+1. Two-account device smoke test of the new flows on
+   `0010934AE002636`. Confirm:
+   - Bottom tab bar reads `Feed | Map | + | Saved | Profile`. No
+     Inbox tab.
+   - Saved tab shows the user's saved videos (or the empty state).
+     Save a video from the feed, switch to Saved, see it appear live.
+   - Profile top-right is now a chatbubble. Tapping it pushes
+     `/inbox`. Send yourself a message from another account, see the
+     red dot light up.
+   - Profile sub-tabs are `Posts | Map`. Map shows clustered markers
+     for posts that have a location. Tap a marker to navigate into
+     the user's feed at that video.
+2. Confirm cold-start FCM tap still lands on `/chat/{threadId}` (no
+   change expected — `app/chat/[threadId].tsx` did not move).

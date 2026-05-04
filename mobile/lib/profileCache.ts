@@ -10,7 +10,6 @@ export type CachedProfile = {
   photoURL: string | null;
   bio: string | null;
   mine: VideoDoc[];
-  saved: VideoDoc[];
   counts: { following: number; followers: number };
   fetchedAt: number;
 };
