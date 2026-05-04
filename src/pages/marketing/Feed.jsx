@@ -151,7 +151,7 @@ function FeedSlide({ video, active, muted, onToggleMute, setRef }) {
             onClick={async () => {
               const url = `${window.location.origin}/v/${video.id}`;
               try {
-                if (navigator.share) await navigator.share({ url, title: 'Roamrez video' });
+                if (navigator.share) await navigator.share({ url, title: 'Roamerz video' });
                 else {
                   await navigator.clipboard.writeText(url);
                   alert('Link copied');

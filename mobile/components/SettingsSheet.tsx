@@ -21,7 +21,7 @@ export function SettingsSheet({
   function confirmDelete() {
     Alert.alert(
       'Delete account?',
-      'This permanently removes your Roamrez account.',
+      'This permanently removes your Roamerz account.',
       [
         { text: 'Cancel', style: 'cancel' },
         {

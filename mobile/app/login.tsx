@@ -106,7 +106,7 @@ export default function Login() {
         <View style={styles.container}>
           <View style={styles.logoRow}>
             <Text style={styles.logoFly}>Roam</Text>
-            <Text style={styles.logoTok}>rez</Text>
+            <Text style={styles.logoTok}>erz</Text>
           </View>
           <Text style={styles.tagline}>Travel videos for the curious.</Text>
 

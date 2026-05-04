@@ -17,16 +17,16 @@ export default function Terms() {
         <h1 className="text-3xl font-bold mt-6">Terms of Service</h1>
         <p className="text-zinc-500 text-sm">Last updated April 2026.</p>
 
-        <h2 className="text-xl font-semibold mt-8">Welcome to Roamrez</h2>
+        <h2 className="text-xl font-semibold mt-8">Welcome to Roamerz</h2>
         <p className="text-zinc-300 mt-3">
-          By creating a Roamrez account or using the app, you agree to these terms. If you don't
-          agree, don't use Roamrez.
+          By creating a Roamerz account or using the app, you agree to these terms. If you don't
+          agree, don't use Roamerz.
         </p>
 
         <h2 className="text-xl font-semibold mt-8">Your account</h2>
         <p className="text-zinc-300 mt-3">
           You are responsible for activity on your account and for the content you upload. Don't
-          share your password. You must be at least 13 years old to use Roamrez.
+          share your password. You must be at least 13 years old to use Roamerz.
         </p>
 
         <h2 className="text-xl font-semibold mt-8">Content rules</h2>
@@ -50,7 +50,7 @@ export default function Terms() {
 
         <h2 className="text-xl font-semibold mt-8">Disclaimer</h2>
         <p className="text-zinc-300 mt-3">
-          Roamrez is provided "as is" without warranties. We are not liable for damages arising
+          Roamerz is provided "as is" without warranties. We are not liable for damages arising
           from your use of the service.
         </p>
 

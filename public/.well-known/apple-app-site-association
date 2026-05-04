@@ -6,7 +6,7 @@
         "components": [
           {
             "/": "/v/*",
-            "comment": "Open per-video URLs in the Flytok app"
+            "comment": "Open per-video URLs in the Roamerz app"
           },
           {
             "/": "/feed",

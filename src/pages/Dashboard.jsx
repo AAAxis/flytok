@@ -17,7 +17,7 @@ export default function Dashboard() {
     <div className="p-6 max-w-[1400px] mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-zinc-100">Dashboard</h1>
-        <p className="text-sm text-zinc-500">Real-time view of Roamrez activity.</p>
+        <p className="text-sm text-zinc-500">Real-time view of Roamerz activity.</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">

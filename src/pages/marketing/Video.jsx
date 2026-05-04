@@ -26,17 +26,17 @@ export default function Video() {
   // Update document title and meta tags for sharing
   useEffect(() => {
     if (!video) return;
-    const title = video.caption?.slice(0, 60) || 'Roamrez video';
-    document.title = `${title} · Roamrez`;
-    setMeta('description', video.caption ?? 'A travel video on Roamrez.');
+    const title = video.caption?.slice(0, 60) || 'Roamerz video';
+    document.title = `${title} · Roamerz`;
+    setMeta('description', video.caption ?? 'A travel video on Roamerz.');
     setMeta('og:title', title, true);
-    setMeta('og:description', video.caption ?? 'A travel video on Roamrez.', true);
+    setMeta('og:description', video.caption ?? 'A travel video on Roamerz.', true);
     setMeta('og:url', window.location.href, true);
     setMeta('og:type', 'video.other', true);
     if (video.downloadURL) setMeta('og:video', video.downloadURL, true);
     setMeta('twitter:card', 'player');
     return () => {
-      document.title = 'Roamrez — Travel videos for the curious';
+      document.title = 'Roamerz — Travel videos for the curious';
     };
   }, [video]);
 
@@ -60,7 +60,7 @@ export default function Video() {
   async function share() {
     const url = window.location.href;
     try {
-      if (navigator.share) await navigator.share({ url, title: 'Roamrez video' });
+      if (navigator.share) await navigator.share({ url, title: 'Roamerz video' });
       else {
         await navigator.clipboard.writeText(url);
         alert('Link copied');

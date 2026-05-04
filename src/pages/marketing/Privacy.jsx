@@ -27,13 +27,13 @@ export default function Privacy() {
 
         <h2 className="text-xl font-semibold mt-8">How we use it</h2>
         <p className="text-zinc-300 mt-3">
-          We use this data to operate Roamrez — to show you a feed, deliver chats, fix bugs, and
+          We use this data to operate Roamerz — to show you a feed, deliver chats, fix bugs, and
           keep the service safe. We do not sell your personal data.
         </p>
 
         <h2 className="text-xl font-semibold mt-8">Sharing</h2>
         <p className="text-zinc-300 mt-3">
-          Content you post is visible to other Roamrez users. We use Firebase (Google Cloud) for
+          Content you post is visible to other Roamerz users. We use Firebase (Google Cloud) for
           authentication, storage, database, and crash reporting; data is processed under
           Google's terms.
         </p>
@@ -47,7 +47,7 @@ export default function Privacy() {
 
         <h2 className="text-xl font-semibold mt-8">Children</h2>
         <p className="text-zinc-300 mt-3">
-          Roamrez is not directed to children under 13. We do not knowingly collect data from
+          Roamerz is not directed to children under 13. We do not knowingly collect data from
           children under 13.
         </p>
 

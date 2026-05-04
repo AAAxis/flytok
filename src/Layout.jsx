@@ -59,7 +59,7 @@ export default function Layout({ children }) {
         </nav>
 
         <div className="p-3 border-t border-zinc-800">
-          <div className="text-[10px] text-zinc-600 text-center">Roamrez Admin · v0.1</div>
+          <div className="text-[10px] text-zinc-600 text-center">Roamerz Admin · v0.1</div>
         </div>
       </aside>
 

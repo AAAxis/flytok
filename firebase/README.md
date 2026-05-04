@@ -23,7 +23,7 @@ These contain restricted client API keys, not server secrets. They ship inside t
 
 ## App identities
 
-- **Mobile (Flytok)** — user-facing TikTok-for-travel: video feed, upload/capture, follows, DMs, itineraries, map.
+- **Mobile (Roamerz)** — user-facing TikTok-for-travel: video feed, upload/capture, follows, DMs, itineraries, map.
 - **Web admin panel** — operator console: user management, video moderation, reports, analytics. **Not** a public surface.
 
 ## Schema

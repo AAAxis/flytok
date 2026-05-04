@@ -54,7 +54,7 @@ export default function CameraScreen() {
       if (!perm.granted) {
         Alert.alert(
           'Photos access needed',
-          'Enable Photos access for Roamrez in Settings to pick a video from your library.',
+          'Enable Photos access for Roamerz in Settings to pick a video from your library.',
         );
         return;
       }
@@ -154,7 +154,7 @@ export default function CameraScreen() {
           <Ionicons name="videocam-outline" size={32} color={colors.textMuted} />
           <Text style={styles.permTitle}>Camera access needed</Text>
           <Text style={styles.permBody}>
-            Roamrez needs the camera to record travel videos.
+            Roamerz needs the camera to record travel videos.
           </Text>
           <Pressable onPress={requestCamPerm} style={styles.permButton}>
             <Text style={styles.permButtonText}>Grant access</Text>

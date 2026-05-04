@@ -4,7 +4,7 @@ export type AiMessage = {
 };
 
 const SYSTEM_PROMPT =
-  "You are Roamrez's in-app travel assistant. Keep replies short (under 80 words), " +
+  "You are Roamerz's in-app travel assistant. Keep replies short (under 80 words), " +
   "concrete, and friendly. Suggest places, captions, hashtags, or filming tips.";
 
 const ENDPOINT = process.env.EXPO_PUBLIC_AI_ENDPOINT;
