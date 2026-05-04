@@ -15,7 +15,7 @@ function looksLikeCoords(s: string): boolean {
 function placeLabel(p: Location.LocationGeocodedAddress, fallback?: string): string {
   const candidates = [p.name, p.street, p.city, p.subregion, p.region, p.country];
   const parts = candidates
-    .filter((x): x is string => Boolean(x) && !looksLikeCoords(x));
+    .filter((x): x is string => x != null && !looksLikeCoords(x));
   // dedupe consecutive duplicates (e.g., when name === city)
   const out: string[] = [];
   for (const part of parts) {

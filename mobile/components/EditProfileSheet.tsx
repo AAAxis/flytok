@@ -88,7 +88,7 @@ export function EditProfileSheet({
       try {
         const snap = await usernamesCol().doc(lower).get();
         if (seq !== takenSeq.current) return;
-        if (!snap.exists) setTaken('free');
+        if (!snap.exists()) setTaken('free');
         else if ((snap.data()?.uid as string) === me.uid) setTaken('free');
         else setTaken('taken');
       } catch {

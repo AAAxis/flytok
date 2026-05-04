@@ -36,9 +36,10 @@ export function FeedItem({
 }) {
   const me = auth().currentUser;
   const insets = useSafeAreaInsets();
-  // Overlay must clear the tab bar (~56dp) plus the system gesture inset on
-  // Android edge-to-edge devices. iOS picks up its home-indicator the same way.
-  const overlayBottom = Math.max(96, insets.bottom + 64);
+  // The FeedItem is rendered inside the (tabs) screen, so the tab bar is
+  // already excluded from `height`. Only keep clear of the bottom safe-area
+  // (home indicator on iOS / gesture bar on Android edge-to-edge).
+  const overlayBottom = insets.bottom + 16;
   const [commentCount, setCommentCount] = useState(0);
   const [following, setFollowing] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -109,7 +110,7 @@ export function FeedItem({
     return followingCol(me.uid)
       .doc(item.ownerId)
       .onSnapshot(
-        (snap) => setFollowing(snap.exists),
+        (snap) => setFollowing(snap.exists()),
         () => setFollowing(false),
       );
   }, [active, me, item.ownerId]);

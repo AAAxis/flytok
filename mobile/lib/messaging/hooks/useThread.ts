@@ -19,7 +19,7 @@ export function useThread(threadId: string | undefined): {
       .doc(threadId)
       .onSnapshot(
         (snap) => {
-          if (!snap.exists) {
+          if (!snap.exists()) {
             setThread(null);
           } else {
             setThread({ id: snap.id, ...(snap.data() as Omit<ThreadDoc, 'id'>) });

@@ -12,7 +12,20 @@
           "package_name": "com.roamrez.flytok"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "320506157076-q92g18f68e1avgbnnuqaibt4t4bt1ijv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.roamrez.flytok",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "320506157076-vhtgtin9peg3gi1rrjj79s2k261jkdjj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyChGOfq7LGx37wWGRKAqKKWgknLyFSN76k"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "320506157076-vhtgtin9peg3gi1rrjj79s2k261jkdjj.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "320506157076-ldlrk0pjf7teqh3rs4ktnm8ca1fr6kam.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.roamrez.flytok"
+              }
+            }
+          ]
         }
       }
     }

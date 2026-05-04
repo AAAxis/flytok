@@ -7,6 +7,12 @@ service-account.json
 service-account-*.json
 **/*-firebase-adminsdk-*.json
 
+# Android signing — keystores + passwords. Never commit.
+secrets/
+*.jks
+*.keystore
+!mobile/android/app/debug.keystore
+
 # Logs
 logs
 *.log

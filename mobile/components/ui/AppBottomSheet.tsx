@@ -14,6 +14,7 @@ import {
   BottomSheetBackdrop,
   BottomSheetModal,
   type BottomSheetBackdropProps,
+  type BottomSheetFooterProps,
   type BottomSheetModalProps,
 } from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
@@ -53,6 +54,14 @@ type Props = {
   /** Tap on backdrop dismisses by default; pass false to disable. */
   dismissOnBackdropTap?: boolean;
 
+  /**
+   * Optional sticky footer rendered via gorhom's `BottomSheetFooter`. Use
+   * for chat-style composers that must sit just above the keyboard — gorhom
+   * animates the footer with `animatedFooterPosition` so it tracks the
+   * keyboard regardless of the inner scroll content.
+   */
+  footerComponent?: (props: BottomSheetFooterProps) => ReactNode;
+
   children: ReactNode;
 };
 
@@ -76,6 +85,7 @@ export const AppBottomSheet = forwardRef<AppBottomSheetHandle, Props>(function A
     keyboardBehavior = 'interactive',
     keyboardBlurBehavior = 'restore',
     dismissOnBackdropTap = true,
+    footerComponent,
     children,
   },
   ref,
@@ -143,6 +153,7 @@ export const AppBottomSheet = forwardRef<AppBottomSheetHandle, Props>(function A
       keyboardBlurBehavior={keyboardBlurBehavior}
       android_keyboardInputMode="adjustResize"
       enablePanDownToClose
+      footerComponent={footerComponent}
     >
       {title ? (
         <View style={styles.header}>

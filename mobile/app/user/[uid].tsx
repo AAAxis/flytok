@@ -86,7 +86,7 @@ export default function UserProfile() {
     return followingCol(me.uid)
       .doc(uid)
       .onSnapshot(
-        (snap) => setFollowing(snap.exists),
+        (snap) => setFollowing(snap.exists()),
         () => setFollowing(false),
       );
   }, [me, uid, isMe]);

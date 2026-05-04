@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,8 +8,11 @@ import {
 } from 'react-native';
 import {
   BottomSheetFlatList,
+  BottomSheetFooter,
   BottomSheetTextInput,
+  type BottomSheetFooterProps,
 } from '@gorhom/bottom-sheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { askAssistant, type AiMessage } from '@/lib/aiAssistant';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
@@ -28,6 +31,7 @@ export function AiAssistantSheet({
   visible: boolean;
   onClose: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<AiMessage[]>([STARTER_MESSAGE]);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
@@ -42,7 +46,7 @@ export function AiAssistantSheet({
     }
   }, [visible]);
 
-  async function send() {
+  const send = useCallback(async () => {
     const text = input.trim();
     if (!text || thinking) return;
     const userMsg: AiMessage = { role: 'user', content: text };
@@ -65,13 +69,64 @@ export function AiAssistantSheet({
       setThinking(false);
       setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 50);
     }
-  }
+  }, [input, thinking, messages]);
+
+  // Composer renders as a `BottomSheetFooter` so gorhom's animated footer
+  // position tracks the keyboard the same way `KeyboardStickyView` does in
+  // the chat thread (`app/chat/[threadId].tsx`) — flush above the keyboard
+  // when open, lifted above the home indicator by `insets.bottom` when
+  // closed. The footer's animated position is internal to gorhom; we only
+  // supply the resting bottom inset.
+  const renderFooter = useCallback(
+    (props: BottomSheetFooterProps) => (
+      <BottomSheetFooter {...props} bottomInset={0}>
+        <View style={[styles.composer, { paddingBottom: 8 + insets.bottom }]}>
+          <BottomSheetTextInput
+            value={input}
+            onChangeText={setInput}
+            placeholder="Message…"
+            placeholderTextColor={colors.textFaint}
+            style={styles.input}
+            editable={!thinking}
+            multiline
+            onSubmitEditing={send}
+            returnKeyType="send"
+            blurOnSubmit
+            accessibilityLabel="Message text"
+          />
+          <Pressable
+            onPress={send}
+            disabled={!input.trim() || thinking}
+            style={({ pressed }) => [
+              styles.send,
+              (!input.trim() || thinking) && styles.sendDisabled,
+              pressed && styles.sendPressed,
+            ]}
+            accessibilityLabel="Send message"
+          >
+            {thinking ? (
+              <ActivityIndicator color={colors.bg} size="small" />
+            ) : (
+              <Ionicons name="arrow-up" size={18} color={colors.bg} />
+            )}
+          </Pressable>
+        </View>
+      </BottomSheetFooter>
+    ),
+    [input, thinking, send, insets.bottom],
+  );
 
   return (
     <AppBottomSheet
       visible={visible}
       onClose={onClose}
       snapPoints={['90%']}
+      // `extend` ensures the sheet snaps up to its highest stop the moment
+      // the input gains focus, so the footer can rest flush above the
+      // keyboard without the user seeing a content-shift in flight.
+      keyboardBehavior="extend"
+      keyboardBlurBehavior="restore"
+      footerComponent={renderFooter}
     >
       <View style={styles.header}>
         <View style={styles.titleRow}>
@@ -106,32 +161,6 @@ export function AiAssistantSheet({
           <Text style={styles.thinkingText}>Thinking…</Text>
         </View>
       )}
-
-      <View style={styles.composer}>
-        <BottomSheetTextInput
-          value={input}
-          onChangeText={setInput}
-          placeholder="Ask about a place, caption, hashtag…"
-          placeholderTextColor={colors.textFaint}
-          style={styles.input}
-          editable={!thinking}
-          multiline
-          onSubmitEditing={send}
-          returnKeyType="send"
-          blurOnSubmit
-        />
-        <Pressable
-          onPress={send}
-          disabled={!input.trim() || thinking}
-          style={({ pressed }) => [
-            styles.send,
-            (!input.trim() || thinking) && styles.sendDisabled,
-            pressed && styles.sendPressed,
-          ]}
-        >
-          <Ionicons name="arrow-up" size={18} color={colors.bg} />
-        </Pressable>
-      </View>
     </AppBottomSheet>
   );
 }
@@ -148,7 +177,9 @@ const styles = StyleSheet.create({
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  listContent: { padding: 16, gap: 8 },
+  // Bottom padding leaves room for the footer composer so the last message
+  // isn't hidden under the input.
+  listContent: { padding: 16, gap: 8, paddingBottom: 96 },
   bubble: {
     maxWidth: '85%',
     paddingHorizontal: 12,
@@ -174,11 +205,17 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   thinkingText: { color: colors.textMuted, fontSize: 12 },
+  // Mirror the chat composer (`components/messaging/Composer.tsx`) — same
+  // hairline top border, flex-end alignment, surface-tinted rounded input,
+  // and accent send button. Wrapping it in `BottomSheetFooter` is what
+  // gives it the keyboard-tracking behavior the chat thread gets from
+  // `KeyboardStickyView`.
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 12,
+    padding: 8,
     gap: 8,
+    backgroundColor: colors.surface,
     borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
   },

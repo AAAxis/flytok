@@ -41,7 +41,7 @@ export async function getFollowedUserProfiles(opts: { limit?: number } = {}): Pr
   const out: UserDoc[] = [];
   for (let i = 0; i < profileSnaps.length; i++) {
     const snap = profileSnaps[i];
-    if (!snap || !snap.exists) continue;
+    if (!snap || !snap.exists()) continue;
     out.push(shapeUser(ids[i], snap.data() as Record<string, unknown>));
   }
   return out;

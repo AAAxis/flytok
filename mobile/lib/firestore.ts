@@ -128,7 +128,7 @@ export async function toggleLike(videoId: string): Promise<boolean> {
     const videoSnap = await tx.get(videoRef);
     const current = Math.max(0, (videoSnap.data()?.likeCount as number | undefined) ?? 0);
 
-    if (likeSnap.exists) {
+    if (likeSnap.exists()) {
       tx.delete(likeRef);
       tx.set(videoRef, { likeCount: Math.max(0, current - 1) }, { merge: true });
       return false;
@@ -282,11 +282,11 @@ export async function claimUsername(newUsername: string): Promise<void> {
 
     const newRef = usernamesCol().doc(lower);
     const newSnap = await tx.get(newRef);
-    if (newSnap.exists && (newSnap.data()?.uid as string) !== user.uid) {
+    if (newSnap.exists() && (newSnap.data()?.uid as string) !== user.uid) {
       throw new Error('username_taken');
     }
 
-    if (!newSnap.exists) tx.set(newRef, { uid: user.uid });
+    if (!newSnap.exists()) tx.set(newRef, { uid: user.uid });
     if (currentLower && currentLower !== lower) {
       tx.delete(usernamesCol().doc(currentLower));
     }
@@ -412,7 +412,7 @@ export async function updateOwnVideoCaption(
   const user = requireUser();
   const ref = videosCol().doc(videoId);
   const snap = await ref.get();
-  if (!snap.exists) throw new Error('Video not found');
+  if (!snap.exists()) throw new Error('Video not found');
   const data = snap.data();
   const tokenResult = await user.getIdTokenResult();
   const isAdmin = tokenResult.claims.role === 'admin';

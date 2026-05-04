@@ -5,11 +5,11 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 const IOS_CLIENT_ID =
   '320506157076-ldlrk0pjf7teqh3rs4ktnm8ca1fr6kam.apps.googleusercontent.com';
 
-// Android needs a Web Client ID (auto-created by Firebase when Google sign-in
-// is enabled). Paste it here once you grab it from Firebase Console →
-// Project settings → General → Your apps → Web client. Until then, Android
-// Google sign-in will fail; iOS still works.
-const WEB_CLIENT_ID = '';
+// Web Client ID auto-created by Firebase when Google sign-in is enabled.
+// Pulled from firebase/google-services.json -> client.oauth_client[client_type: 3].
+// Required on Android; the SDK auto-reads it on iOS but we pass it for parity.
+const WEB_CLIENT_ID =
+  '320506157076-vhtgtin9peg3gi1rrjj79s2k261jkdjj.apps.googleusercontent.com';
 
 let configured = false;
 export function ensureGoogleConfigured() {

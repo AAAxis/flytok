@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 // Local LRU video cache backed by FileSystem.cacheDirectory.
 // iOS auto-evicts cacheDirectory under storage pressure, so unbounded cache

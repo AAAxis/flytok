@@ -20,7 +20,7 @@ export default function DeepLinkVideo() {
       .doc(id)
       .get()
       .then((snap) => {
-        if (snap.exists) {
+        if (snap.exists()) {
           setVideo({ id: snap.id, ...(snap.data() as Omit<VideoDoc, 'id'>) });
         }
       })

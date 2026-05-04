@@ -37,50 +37,57 @@ export function PlaceCard({ visible, onClose, placeName, videos }: Props) {
 
   return (
     <AppBottomSheet visible={visible} onClose={onClose} snapPoints={['45%']}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <View style={styles.iconWrap}>
-            <Ionicons name="location" size={18} color={colors.bg} />
-          </View>
-          <View style={styles.headerText}>
-            <Text style={styles.title} numberOfLines={1}>
-              {placeName ?? 'Place'}
-            </Text>
-            <Text style={styles.subtitle}>
-              {videos.length} {videos.length === 1 ? 'video' : 'videos'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.thumbRow}>
-          {top.length === 0 ? (
-            <View style={styles.emptyThumbs}>
-              <Text style={styles.emptyText}>No videos yet</Text>
+      {/*
+       * Gate the inner content on `visible` so the up-to-3 `useVideoPlayer`
+       * instances in PlaceThumbnail don't run silently while the sheet is
+       * dismissed. The same OOM pattern bit the feed previously.
+       */}
+      {visible ? (
+        <View style={styles.container}>
+          <View style={styles.header}>
+            <View style={styles.iconWrap}>
+              <Ionicons name="location" size={18} color={colors.bg} />
             </View>
-          ) : (
-            top.map((v) => (
-              <PlaceThumbnail
-                key={v.id}
-                video={v}
-                onPress={() => openPlaceFeed(v.id)}
-              />
-            ))
-          )}
-        </View>
+            <View style={styles.headerText}>
+              <Text style={styles.title} numberOfLines={1}>
+                {placeName ?? 'Place'}
+              </Text>
+              <Text style={styles.subtitle}>
+                {videos.length} {videos.length === 1 ? 'video' : 'videos'}
+              </Text>
+            </View>
+          </View>
 
-        <Pressable
-          onPress={() => openPlaceFeed()}
-          disabled={videos.length === 0}
-          style={({ pressed }) => [
-            styles.cta,
-            pressed && styles.ctaPressed,
-            videos.length === 0 && styles.ctaDisabled,
-          ]}
-        >
-          <Text style={styles.ctaText}>Open feed</Text>
-          <Ionicons name="arrow-forward" size={16} color={colors.bg} />
-        </Pressable>
-      </View>
+          <View style={styles.thumbRow}>
+            {top.length === 0 ? (
+              <View style={styles.emptyThumbs}>
+                <Text style={styles.emptyText}>No videos yet</Text>
+              </View>
+            ) : (
+              top.map((v) => (
+                <PlaceThumbnail
+                  key={v.id}
+                  video={v}
+                  onPress={() => openPlaceFeed(v.id)}
+                />
+              ))
+            )}
+          </View>
+
+          <Pressable
+            onPress={() => openPlaceFeed()}
+            disabled={videos.length === 0}
+            style={({ pressed }) => [
+              styles.cta,
+              pressed && styles.ctaPressed,
+              videos.length === 0 && styles.ctaDisabled,
+            ]}
+          >
+            <Text style={styles.ctaText}>Open feed</Text>
+            <Ionicons name="arrow-forward" size={16} color={colors.bg} />
+          </Pressable>
+        </View>
+      ) : null}
     </AppBottomSheet>
   );
 }

@@ -46,6 +46,7 @@ export function ResultsTabs({ query, loading, tab, onTabChange, results }: Props
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.tabBarScroll}
         contentContainerStyle={styles.tabBar}
       >
         {TABS.map((t) => {
@@ -312,10 +313,14 @@ function VideoRow({ video, query: _query }: { video: VideoDoc; query: string }) 
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  // Without flexGrow: 0 a horizontal ScrollView absorbs the parent's height
+  // when its sibling is non-flex (empty-state view), stretching the chips.
+  tabBarScroll: { flexGrow: 0 },
   tabBar: {
     paddingHorizontal: 12,
     gap: 6,
     paddingVertical: 6,
+    alignItems: 'center',
   },
   tab: {
     paddingHorizontal: 14,

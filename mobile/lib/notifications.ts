@@ -1,13 +1,17 @@
 import { PermissionsAndroid, Platform } from 'react-native';
-import messaging from '@react-native-firebase/messaging';
-
-const AUTH = messaging.AuthorizationStatus;
+import { getApp } from '@react-native-firebase/app';
+import {
+  AuthorizationStatus,
+  getMessaging,
+  hasPermission,
+  requestPermission,
+} from '@react-native-firebase/messaging';
 
 function isGranted(status: number): boolean {
   return (
-    status === AUTH.AUTHORIZED ||
-    status === AUTH.PROVISIONAL ||
-    status === AUTH.EPHEMERAL
+    status === AuthorizationStatus.AUTHORIZED ||
+    status === AuthorizationStatus.PROVISIONAL ||
+    status === AuthorizationStatus.EPHEMERAL
   );
 }
 
@@ -22,9 +26,10 @@ function isGranted(status: number): boolean {
 export async function ensureNotificationPermission(): Promise<boolean> {
   try {
     if (Platform.OS === 'ios') {
-      const current = await messaging().hasPermission();
-      if (current === AUTH.NOT_DETERMINED) {
-        const result = await messaging().requestPermission();
+      const messaging = getMessaging(getApp());
+      const current = await hasPermission(messaging);
+      if (current === AuthorizationStatus.NOT_DETERMINED) {
+        const result = await requestPermission(messaging);
         return isGranted(result);
       }
       return isGranted(current);

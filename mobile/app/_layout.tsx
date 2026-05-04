@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { ActivityIndicator, AppState, Platform, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import messaging, {
   FirebaseMessagingTypes,
@@ -15,6 +16,17 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { setUserProperty } from '@/lib/analytics';
 import { setupBackgroundMessageHandler } from '@/lib/messaging';
 import { colors } from '@/lib/theme';
+
+// Silence the v22 React Native Firebase namespaced-API deprecation warnings.
+// The codebase still uses the namespaced surface (`auth()`, `firestore()`,
+// `messaging()`); full migration to the modular API is tracked separately.
+// Flag name must match RNF v24 internals exactly — see
+// node_modules/@react-native-firebase/app/lib/common/index.ts. This flag must
+// be set before the first RNF call; module-scope
+// `setupBackgroundMessageHandler()` below is the first call site, so ordering
+// here is intentional.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).RNFB_SILENCE_MODULAR_DEPRECATION_WARNINGS = true;
 
 // Must be registered before any RemoteMessage can arrive.
 setupBackgroundMessageHandler();
@@ -126,12 +138,14 @@ export default function RootLayout() {
   useTrackingPrompt();
   return (
     <GestureHandlerRootView style={styles.root}>
-      <BottomSheetModalProvider>
-        <AuthProvider>
-          <Gate />
-          <StatusBar style="light" />
-        </AuthProvider>
-      </BottomSheetModalProvider>
+      <KeyboardProvider>
+        <BottomSheetModalProvider>
+          <AuthProvider>
+            <Gate />
+            <StatusBar style="light" />
+          </AuthProvider>
+        </BottomSheetModalProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

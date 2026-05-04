@@ -2,21 +2,23 @@ import { useEffect, useRef, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import {
   FlatList,
-  KeyboardAvoidingView,
+  Image,
   Platform,
   StyleSheet,
   Text,
+  View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardStickyView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useHeaderHeight } from '@react-navigation/elements';
 import {
   markRead,
   useMessages,
   useThread,
   type ChatMessage,
 } from '@/lib/messaging';
-import { getUserLabel } from '@/lib/firestore';
+import { getCachedUserBrief, getUserBrief, type UserBrief } from '@/lib/firestore';
 import { MessageBubble } from '@/components/messaging/MessageBubble';
 import { Composer } from '@/components/messaging/Composer';
 import { ReportSheet } from '@/components/ReportSheet';
@@ -26,7 +28,7 @@ export default function ChatThread() {
   const { threadId } = useLocalSearchParams<{ threadId: string }>();
   const router = useRouter();
   const me = auth().currentUser;
-  const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const { thread } = useThread(threadId);
   const { messages, sendText, sendImage } = useMessages(threadId);
   const listRef = useRef<FlatList<ChatMessage>>(null);
@@ -44,13 +46,15 @@ export default function ChatThread() {
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
   }, [messages.length]);
 
-  const [otherLabel, setOtherLabel] = useState('Chat');
+  const [otherBrief, setOtherBrief] = useState<UserBrief>({ label: 'Chat', photoURL: null });
   useEffect(() => {
     if (!thread || !me) return;
     const otherUid = thread.participants.find((p) => p !== me.uid);
     if (!otherUid) return;
-    setOtherLabel(`User ${otherUid.slice(0, 6)}`);
-    getUserLabel(otherUid).then((label) => setOtherLabel(label));
+    const cached = getCachedUserBrief(otherUid);
+    if (cached) setOtherBrief(cached);
+    else setOtherBrief({ label: `User ${otherUid.slice(0, 6)}`, photoURL: null });
+    getUserBrief(otherUid).then(setOtherBrief);
   }, [thread, me]);
 
   return (
@@ -58,41 +62,51 @@ export default function ChatThread() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: otherLabel,
+          headerTitle: () => <ChatHeaderTitle brief={otherBrief} />,
           headerStyle: { backgroundColor: colors.bg },
           headerTitleStyle: { color: colors.text },
           headerTintColor: colors.text,
           headerBackTitle: 'Inbox',
         }}
       />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.safe}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
-      >
-        <SafeAreaView style={styles.flex} edges={['bottom']}>
-          <FlatList
-            ref={listRef}
-            data={messages}
-            keyExtractor={(m) => m.id}
-            contentContainerStyle={styles.list}
-            renderItem={({ item }) =>
-              threadId ? (
-                <MessageBubble
-                  message={item}
-                  threadId={threadId}
-                  mine={item.authorId === me?.uid}
-                  onOpenVideo={() => {
-                    router.dismiss();
-                    router.push('/');
-                  }}
-                  onReportOther={(uid) => setReportTargetUid(uid)}
-                />
-              ) : null
-            }
-            ListEmptyComponent={<Text style={styles.empty}>Say hi 👋</Text>}
-          />
+      <View style={styles.safe}>
+        <FlatList
+          ref={listRef}
+          data={messages}
+          keyExtractor={(m) => m.id}
+          style={styles.flex}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 56 }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={
+            Platform.OS === 'ios' ? 'interactive' : 'on-drag'
+          }
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+          renderItem={({ item }) =>
+            threadId ? (
+              <MessageBubble
+                message={item}
+                threadId={threadId}
+                mine={item.authorId === me?.uid}
+                onOpenVideo={() => {
+                  router.dismiss();
+                  router.push('/');
+                }}
+                onReportOther={(uid) => setReportTargetUid(uid)}
+              />
+            ) : null
+          }
+          ListEmptyComponent={<Text style={styles.empty}>Say hi 👋</Text>}
+        />
 
+        {/*
+          KeyboardStickyView (from react-native-keyboard-controller) sticks the
+          composer to the keyboard top when open and to the safe-area bottom
+          when closed. RNKC's translateY is `height + interpolate([closed,
+          opened])` — `height` is -keyboardHeight when open, 0 when closed,
+          so a *negative* `closed` lifts the composer above the home indicator.
+          `opened: 0` keeps the input flush against the keyboard with no gap.
+        */}
+        <KeyboardStickyView offset={{ closed: -insets.bottom, opened: 0 }}>
           <Composer
             onSendText={async (text) => {
               try {
@@ -114,8 +128,8 @@ export default function ChatThread() {
               }
             }}
           />
-        </SafeAreaView>
-      </KeyboardAvoidingView>
+        </KeyboardStickyView>
+      </View>
 
       {reportTargetUid ? (
         <ReportSheet
@@ -129,9 +143,48 @@ export default function ChatThread() {
   );
 }
 
+function ChatHeaderTitle({ brief }: { brief: UserBrief }) {
+  return (
+    <View style={styles.headerTitle}>
+      <View style={styles.headerAvatar}>
+        {brief.photoURL ? (
+          <Image source={{ uri: brief.photoURL }} style={styles.headerAvatarImage} />
+        ) : (
+          <Ionicons name="person" size={14} color={colors.text} />
+        )}
+      </View>
+      <Text numberOfLines={1} style={styles.headerLabel}>
+        {brief.label}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   list: { padding: 12, gap: 6 },
   empty: { color: colors.textDim, fontSize: 13, textAlign: 'center', marginTop: 32 },
+  headerTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    maxWidth: 220,
+  },
+  headerAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  headerAvatarImage: { width: 28, height: 28 },
+  headerLabel: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
 });

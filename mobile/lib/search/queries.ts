@@ -119,7 +119,7 @@ export type TrendingPlace = {
 export async function getTrendingPlaces(): Promise<TrendingPlace[]> {
   try {
     const snap = await firestore().collection('trending_places').doc('snapshot').get();
-    if (!snap.exists) return [];
+    if (!snap.exists()) return [];
     const data = snap.data() as
       | { topPlaces?: TrendingPlace[] }
       | undefined;

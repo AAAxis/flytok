@@ -19,7 +19,13 @@ import { useRouter } from 'expo-router';
 import {
   extractHashtags,
   extractMentions,
+  isValidHashtag,
+  normaliseHashtags,
   uploadVideo,
+  HASHTAG_MAX_COUNT,
+  HASHTAG_MAX_TAG_LENGTH,
+  HASHTAG_TOTAL_CHAR_LIMIT,
+  totalHashtagsLength,
   type VideoLocation,
 } from '@/lib/firestore';
 import type { FirebaseStorageTypes } from '@react-native-firebase/storage';
@@ -55,6 +61,7 @@ export default function Upload() {
 
   const [tagInput, setTagInput] = useState('');
   const [extraTags, setExtraTags] = useState<string[]>([]);
+  const [tagError, setTagError] = useState<string | null>(null);
   const [mentionInput, setMentionInput] = useState('');
   const [mentions, setMentions] = useState<string[]>([]);
 
@@ -71,29 +78,58 @@ export default function Upload() {
     if (uri) p.play();
   });
 
-  // Tags = #hashtags found in the caption + any the user added explicitly on step 2
+  // Tags = #hashtags found in the caption + any the user added explicitly on step 2.
+  // The combined list is run through normaliseHashtags so the in-flight UI
+  // already shows what will actually persist (10 max, ≤80 chars total).
   const captionHashtags = useMemo(() => extractHashtags(caption), [caption]);
-  const allTags = useMemo(() => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const t of [...captionHashtags, ...extraTags]) {
-      const norm = t.toLowerCase();
-      if (!seen.has(norm)) {
-        seen.add(norm);
-        out.push(norm);
-      }
-    }
-    return out;
-  }, [captionHashtags, extraTags]);
+  const allTags = useMemo(
+    () => normaliseHashtags([...captionHashtags, ...extraTags]),
+    [captionHashtags, extraTags],
+  );
+  const usedChars = totalHashtagsLength(allTags);
+  const charsLeft = Math.max(0, HASHTAG_TOTAL_CHAR_LIMIT - usedChars);
+  const atTagCap = allTags.length >= HASHTAG_MAX_COUNT;
 
   function commitTag() {
     const raw = tagInput.replace(/^#+/, '').trim().toLowerCase();
     if (!raw) return;
-    if (!allTags.includes(raw)) setExtraTags((prev) => [...prev, raw]);
+    if (!isValidHashtag(raw)) {
+      setTagError(
+        raw.length > HASHTAG_MAX_TAG_LENGTH
+          ? `Max ${HASHTAG_MAX_TAG_LENGTH} characters per tag`
+          : 'Letters, numbers and _ only',
+      );
+      return;
+    }
+    if (allTags.includes(raw)) {
+      setTagError('Already added');
+      setTagInput('');
+      return;
+    }
+    if (atTagCap) {
+      setTagError(`Up to ${HASHTAG_MAX_COUNT} hashtags`);
+      return;
+    }
+    // Budget check uses the same accounting normaliseHashtags applies, so the
+    // user can't sneak past the cap by typing fast.
+    const projected = totalHashtagsLength([...allTags, raw]);
+    if (projected > HASHTAG_TOTAL_CHAR_LIMIT) {
+      setTagError(`Only ${charsLeft} characters left`);
+      return;
+    }
+    setTagError(null);
+    setExtraTags((prev) => [...prev, raw]);
     setTagInput('');
   }
   function removeTag(tag: string) {
+    // Caption-derived tags can't be removed in isolation — they'd just come
+    // back from the caption next render. Strip from caption instead.
+    if (captionHashtags.includes(tag)) {
+      setCaption((prev) => prev.replace(new RegExp(`#${tag}\\b`, 'gi'), '').replace(/\s{2,}/g, ' ').trim());
+      return;
+    }
     setExtraTags((prev) => prev.filter((t) => t !== tag));
+    setTagError(null);
   }
 
   function commitMention() {
@@ -424,28 +460,45 @@ export default function Upload() {
 
           {step === 2 && (
             <>
-              <Text style={styles.label}>Tags</Text>
-              <Text style={styles.helper}>Add hashtags so people discovering this place can find your video.</Text>
+              <View style={styles.labelRow}>
+                <Text style={styles.label}>Hashtags</Text>
+                <Text
+                  style={[
+                    styles.counter,
+                    charsLeft <= 10 && styles.counterWarn,
+                  ]}
+                >
+                  {usedChars}/{HASHTAG_TOTAL_CHAR_LIMIT}
+                </Text>
+              </View>
+              <Text style={styles.helper}>
+                Stored as a separate field so trending and category filters can find this video.
+                Up to {HASHTAG_MAX_COUNT} tags · {HASHTAG_TOTAL_CHAR_LIMIT} characters total.
+              </Text>
               <View style={styles.chipInputRow}>
                 <Text style={styles.chipPrefix}>#</Text>
                 <TextInput
                   value={tagInput}
-                  onChangeText={setTagInput}
+                  onChangeText={(v) => {
+                    setTagInput(v.slice(0, HASHTAG_MAX_TAG_LENGTH));
+                    if (tagError) setTagError(null);
+                  }}
                   onSubmitEditing={commitTag}
-                  placeholder="travel"
+                  placeholder={atTagCap ? `Hashtag limit reached` : 'travel'}
                   placeholderTextColor={colors.textFaint}
                   autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="done"
+                  maxLength={HASHTAG_MAX_TAG_LENGTH}
                   style={styles.chipInput}
-                  editable={editable}
+                  editable={editable && !atTagCap}
                 />
                 <Pressable
                   onPress={commitTag}
-                  disabled={!tagInput.trim()}
+                  disabled={!tagInput.trim() || atTagCap}
                   style={({ pressed }) => [
                     styles.chipAddBtn,
-                    !tagInput.trim() && styles.submitDisabled,
+                    (!tagInput.trim() || atTagCap) && styles.submitDisabled,
                     pressed && styles.pickerPressed,
                   ]}
                   hitSlop={6}
@@ -453,23 +506,19 @@ export default function Upload() {
                   <Ionicons name="add" size={18} color={colors.text} />
                 </Pressable>
               </View>
+              {tagError ? <Text style={styles.errorText}>{tagError}</Text> : null}
               {allTags.length > 0 && (
                 <View style={styles.tagRow}>
-                  {allTags.map((tag) => {
-                    const fromCaption = captionHashtags.includes(tag);
-                    return (
-                      <Pressable
-                        key={tag}
-                        onPress={() => !fromCaption && removeTag(tag)}
-                        style={[styles.tagChip, !fromCaption && styles.removableChip]}
-                      >
-                        <Text style={styles.tagText}>#{tag}</Text>
-                        {!fromCaption && (
-                          <Ionicons name="close" size={12} color={colors.accent} />
-                        )}
-                      </Pressable>
-                    );
-                  })}
+                  {allTags.map((tag) => (
+                    <Pressable
+                      key={tag}
+                      onPress={() => removeTag(tag)}
+                      style={[styles.tagChip, styles.removableChip]}
+                    >
+                      <Text style={styles.tagText}>#{tag}</Text>
+                      <Ionicons name="close" size={12} color={colors.accent} />
+                    </Pressable>
+                  ))}
                 </View>
               )}
 
@@ -585,6 +634,13 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 24, fontWeight: '700' },
   stepBadge: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
   helper: { color: colors.textMuted, fontSize: 12, marginTop: -8, marginBottom: 4 },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+  },
+  counter: { color: colors.textMuted, fontSize: 11, fontVariant: ['tabular-nums'] },
+  counterWarn: { color: colors.danger },
   chipInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
