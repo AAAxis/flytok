@@ -97,7 +97,12 @@ export default function ChatThread() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: () => <ChatHeaderTitle brief={otherBrief} />,
+          headerTitle: () => (
+            <ChatHeaderTitle
+              brief={otherBrief}
+              onPress={otherUid ? () => router.push(`/user/${otherUid}` as never) : undefined}
+            />
+          ),
           headerStyle: { backgroundColor: colors.bg },
           headerTitleStyle: { color: colors.text },
           headerTintColor: colors.text,
@@ -203,9 +208,15 @@ export default function ChatThread() {
   );
 }
 
-function ChatHeaderTitle({ brief }: { brief: UserBrief }) {
-  return (
-    <View style={styles.headerTitle}>
+function ChatHeaderTitle({
+  brief,
+  onPress,
+}: {
+  brief: UserBrief;
+  onPress?: () => void;
+}) {
+  const content = (
+    <>
       <View style={styles.headerAvatar}>
         {brief.photoURL ? (
           <Image source={{ uri: brief.photoURL }} style={styles.headerAvatarImage} />
@@ -216,7 +227,21 @@ function ChatHeaderTitle({ brief }: { brief: UserBrief }) {
       <Text numberOfLines={1} style={styles.headerLabel}>
         {brief.label}
       </Text>
-    </View>
+    </>
+  );
+  if (!onPress) {
+    return <View style={styles.headerTitle}>{content}</View>;
+  }
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${brief.label}'s profile`}
+      style={({ pressed }) => [styles.headerTitle, pressed && { opacity: 0.7 }]}
+    >
+      {content}
+    </Pressable>
   );
 }
 

@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import {
   followersCol,
   followingCol,
@@ -37,9 +39,15 @@ export function FollowListSheet({
   visible: boolean;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const { set: blockedSet } = useBlockedSet();
+
+  function openProfile(targetUid: string) {
+    onClose();
+    router.push(`/user/${targetUid}` as never);
+  }
 
   useEffect(() => {
     if (!visible || !uid) return;
@@ -110,7 +118,9 @@ export function FollowListSheet({
           data={rows.filter((r) => !blockedSet.has(r.uid))}
           keyExtractor={(r) => r.uid}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => <UserRow row={item} />}
+          renderItem={({ item }) => (
+            <UserRow row={item} onPress={() => openProfile(item.uid)} />
+          )}
           ListEmptyComponent={
             <Text style={styles.empty}>
               {mode === 'following' ? 'Not following anyone yet.' : 'No followers yet.'}
@@ -122,10 +132,15 @@ export function FollowListSheet({
   );
 }
 
-function UserRow({ row }: { row: Row }) {
+function UserRow({ row, onPress }: { row: Row; onPress: () => void }) {
   const name = row.displayName?.trim() || row.username?.trim() || `User ${row.uid.slice(0, 6)}`;
   return (
-    <View style={styles.row}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${name}'s profile`}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+    >
       {row.photoURL ? (
         <Image source={{ uri: row.photoURL }} style={styles.avatar} />
       ) : (
@@ -139,7 +154,8 @@ function UserRow({ row }: { row: Row }) {
           <Text style={styles.handle} numberOfLines={1}>@{row.username}</Text>
         ) : null}
       </View>
-    </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textDim} />
+    </Pressable>
   );
 }
 
@@ -154,6 +170,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
   },
+  rowPressed: { backgroundColor: colors.surface },
   avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surfaceAlt },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   rowText: { flex: 1, minWidth: 0 },

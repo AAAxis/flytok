@@ -53,12 +53,15 @@ export function ThreadRow({
       accessibilityRole="button"
       accessibilityLabel={`Open chat with ${otherLabel}${unread ? ', unread' : ''}`}
     >
-      <View style={styles.avatar}>
-        {otherPhotoURL ? (
-          <Image source={{ uri: otherPhotoURL }} style={styles.avatarImage} />
-        ) : (
-          <Ionicons name="person" size={20} color={colors.text} />
-        )}
+      <View style={styles.avatarWrap}>
+        <View style={styles.avatar}>
+          {otherPhotoURL ? (
+            <Image source={{ uri: otherPhotoURL }} style={styles.avatarImage} />
+          ) : (
+            <Ionicons name="person" size={20} color={colors.text} />
+          )}
+        </View>
+        {unread ? <View style={styles.avatarBadge} /> : null}
       </View>
       <View style={styles.body}>
         <View style={styles.topLine}>
@@ -97,6 +100,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   rowPressed: { backgroundColor: colors.surface },
+  avatarWrap: { width: 44, height: 44 },
   avatar: {
     width: 44,
     height: 44,
@@ -107,6 +111,19 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatarImage: { width: 44, height: 44 },
+  // Unread indicator anchored to the top-right of the avatar so it's
+  // immediately scannable on the row, mirroring iMessage / Telegram.
+  avatarBadge: {
+    position: 'absolute',
+    top: -1,
+    right: -1,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.accent,
+    borderWidth: 2,
+    borderColor: colors.bg,
+  },
   body: { flex: 1, gap: 2 },
   topLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   bottomLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
