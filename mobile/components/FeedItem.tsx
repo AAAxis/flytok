@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import { Alert, Dimensions, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, type VideoPlayer } from 'expo-video';
@@ -22,6 +21,7 @@ export function FeedItem({
   height,
   player,
   onBlocked,
+  onReported,
 }: {
   item: VideoDoc;
   active: boolean;
@@ -32,14 +32,18 @@ export function FeedItem({
    * to avoid mounting a heavy ExoPlayer per card (was the OOM root cause).
    */
   player: VideoPlayer | null;
+  /**
+   * Called after the user blocks an author. The feed filters subsequent
+   * posts from that uid in-memory and advances to the next post.
+   */
   onBlocked?: (uid: string) => void;
+  /**
+   * Called after the user successfully submits a report on this post — the
+   * feed advances past the reported post so the user sees fresh content.
+   */
+  onReported?: (videoId: string) => void;
 }) {
   const me = auth().currentUser;
-  const insets = useSafeAreaInsets();
-  // The FeedItem is rendered inside the (tabs) screen, so the tab bar is
-  // already excluded from `height`. Only keep clear of the bottom safe-area
-  // (home indicator on iOS / gesture bar on Android edge-to-edge).
-  const overlayBottom = insets.bottom + 16;
   const [commentCount, setCommentCount] = useState(0);
   const [following, setFollowing] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -65,11 +69,12 @@ export function FeedItem({
     }
   }
 
-  useEffect(() => {
-    if (!player) return;
-    if (active) player.play();
-    else player.pause();
-  }, [active, player]);
+  // Note: play/pause for active vs inactive cards is owned by `usePlayerPool`'s
+  // rotation effect — we used to also call play()/pause() here from a
+  // [active, player] effect, but that raced with iOS `replaceAsync` (the JS
+  // promise resolves before AVPlayer's main-queue item-replace runs, so play()
+  // was firing on an empty player and the card stayed black). FeedItem now
+  // only handles user-initiated play/pause from tap/long-press / scrub.
 
   // Lightweight playback timeline — polls 4×/sec while the slide is active.
   // Pauses while the user is scrubbing so the polled value doesn't fight the
@@ -270,10 +275,7 @@ export function FeedItem({
         </View>
       </View>
 
-      <View
-        style={[styles.overlay, { paddingBottom: overlayBottom }]}
-        pointerEvents="box-none"
-      >
+      <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.bottomLeft}>
           <View style={styles.authorRow}>
             <Pressable
@@ -378,13 +380,23 @@ export function FeedItem({
                   { text: 'Cancel', style: 'cancel' },
                 ]);
               } else {
-                setShowReport(true);
+                Alert.alert('Post', undefined, [
+                  {
+                    text: 'Report',
+                    style: 'destructive',
+                    onPress: () => setShowReport(true),
+                  },
+                  { text: 'Cancel', style: 'cancel' },
+                ]);
               }
             }}
             style={styles.actionButton}
             hitSlop={8}
+            accessibilityLabel={canManage ? 'More post options' : 'Report this video'}
+            accessibilityRole="button"
           >
             <Ionicons name="ellipsis-horizontal" size={28} color={colors.text} />
+            <Text style={styles.actionLabel}>{canManage ? 'More' : 'Report'}</Text>
           </Pressable>
         </View>
       </View>
@@ -405,6 +417,7 @@ export function FeedItem({
         visible={showReport}
         onClose={() => setShowReport(false)}
         onBlocked={() => onBlocked?.(item.ownerId)}
+        onReported={() => onReported?.(item.id)}
       />
       <EditCaptionSheet
         visible={showEdit}
@@ -460,6 +473,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   bottomLeft: { flex: 1, gap: 6, marginRight: 12 },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },

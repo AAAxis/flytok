@@ -42,8 +42,11 @@ export function EditCaptionSheet({
     <AppBottomSheet
       visible={visible}
       onClose={onClose}
-      snapPoints={['65%']}
+      snapPoints={['65%', '92%']}
       title="Edit caption"
+      keyboardBehavior="extend"
+      keyboardBlurBehavior="restore"
+      enableContentPanningGesture={false}
     >
       <BottomSheetView style={styles.body}>
         <BottomSheetTextInput

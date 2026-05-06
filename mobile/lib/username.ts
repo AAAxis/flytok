@@ -10,6 +10,8 @@ const RESERVED = new Set([
   'admin',
   'support',
   'flytok',
+  'roamerz',
+  'roamrez',
   'root',
   'me',
   'you',

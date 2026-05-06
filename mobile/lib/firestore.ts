@@ -86,7 +86,14 @@ export type CommentDoc = {
   authorEmail?: string | null;
   text: string;
   createdAt?: FirebaseFirestoreTypes.Timestamp;
+  /** Top-level comment id this is a reply to. Null/missing for root comments. */
+  parentId?: string | null;
+  /** Denormalised like count maintained inside `toggleCommentLike`. */
+  likeCount?: number;
 };
+
+/** Hard cap to keep abusive payloads out of Firestore. Mirrors the chat composer. */
+export const COMMENT_MAX_LENGTH = 500;
 
 // Messaging types now live in `lib/messaging/schema.ts`. Re-exported below for
 // existing callers; new code should import from `@/lib/messaging` directly.
@@ -101,6 +108,38 @@ export {
 export { sendText as sendTextMessage, sendVideoCard } from './messaging';
 
 export const videosCol = () => firestore().collection('videos');
+
+/**
+ * Drops video docs that can't actually play.
+ *
+ * `videos` (the FlatList data) and `poolItems` (the player-pool input) MUST
+ * have identical length so their indices align — `usePlayerPool` keys players
+ * by index, and `FeedItem` looks up its player by the FlatList row index.
+ * Dropping unplayable docs from `poolItems` only (the previous behaviour)
+ * shifted every subsequent index in the pool, so the active card got a player
+ * loaded with the *next* video's URL, the broken card never rendered, and the
+ * tail of the feed silently played the wrong content. Filter at load time
+ * instead so both arrays stay 1:1.
+ *
+ * The check is intentionally minimal — a string `downloadURL` is the only
+ * field expo-video actually needs to load a source. Anything missing it (a
+ * partially-written doc from a crashed upload, a manually-inserted record,
+ * an older schema migration) gets dropped here and `[feed] dropped N
+ * unplayable doc(s)` is logged so we see in the wild whether this is a real
+ * data-quality issue.
+ */
+export function filterPlayable(videos: VideoDoc[]): VideoDoc[] {
+  const out = videos.filter(
+    (v) => typeof v.downloadURL === 'string' && v.downloadURL.length > 0,
+  );
+  const dropped = videos.length - out.length;
+  if (dropped > 0) {
+    console.warn(
+      `[feed] dropped ${dropped} unplayable doc(s) (no downloadURL)`,
+    );
+  }
+  return out;
+}
 export const usersCol = () => firestore().collection('users');
 export const usernamesCol = () => firestore().collection('usernames');
 export const reportsCol = () => firestore().collection('reports');
@@ -450,6 +489,64 @@ export function commentsCol(videoId: string) {
   return videosCol().doc(videoId).collection('comments');
 }
 
+export function commentLikesCol(videoId: string, commentId: string) {
+  return commentsCol(videoId).doc(commentId).collection('likes');
+}
+
+/**
+ * Toggle the current user's like on a comment. Mirrors `toggleLike` for videos
+ * — uses a transaction so concurrent taps can't corrupt `likeCount`.
+ */
+export async function toggleCommentLike(
+  videoId: string,
+  commentId: string,
+): Promise<boolean> {
+  const user = requireUser();
+  const commentRef = commentsCol(videoId).doc(commentId);
+  const likeRef = commentLikesCol(videoId, commentId).doc(user.uid);
+  return firestore().runTransaction(async (tx) => {
+    const likeSnap = await tx.get(likeRef);
+    const commentSnap = await tx.get(commentRef);
+    const current = Math.max(
+      0,
+      (commentSnap.data()?.likeCount as number | undefined) ?? 0,
+    );
+    if (likeSnap.exists()) {
+      tx.delete(likeRef);
+      tx.set(commentRef, { likeCount: Math.max(0, current - 1) }, { merge: true });
+      return false;
+    }
+    tx.set(likeRef, { createdAt: firestore.FieldValue.serverTimestamp() });
+    tx.set(commentRef, { likeCount: current + 1 }, { merge: true });
+    return true;
+  });
+}
+
+/**
+ * One-shot fetch of which of the supplied comment ids the current user has
+ * liked. Returns an empty set when signed out so callers can treat unknown as
+ * "not liked" without branching.
+ */
+export async function getCommentsLikedByMe(
+  videoId: string,
+  commentIds: string[],
+): Promise<Set<string>> {
+  const user = auth().currentUser;
+  if (!user || commentIds.length === 0) return new Set();
+  const liked = new Set<string>();
+  await Promise.all(
+    commentIds.map(async (id) => {
+      try {
+        const snap = await commentLikesCol(videoId, id).doc(user.uid).get();
+        if (snap.exists()) liked.add(id);
+      } catch {
+        // Best-effort — a single failed read shouldn't blank out other rows.
+      }
+    }),
+  );
+  return liked;
+}
+
 export function followingCol(uid: string) {
   return usersCol().doc(uid).collection('following');
 }
@@ -575,8 +672,20 @@ export async function uploadVideo(args: UploadVideoArgs) {
   const ext = uri.split('.').pop()?.toLowerCase() || 'mp4';
   const storagePath = `videos/${user.uid}/${ts}.${ext}`;
 
+  // Explicit Content-Type. Without this, Firebase Storage falls back to
+  // `application/octet-stream` when the platform's UTI lookup fails — which
+  // (a) gets denied by the storage rule's `video/.*` matcher, and (b) leaves
+  // AVPlayer with no MIME hint at playback time and is the leading cause of
+  // black cards on iOS. We map the recorded extension to the correct MIME.
+  const contentType =
+    ext === 'mov'
+      ? 'video/quicktime'
+      : ext === 'm4v'
+        ? 'video/x-m4v'
+        : `video/${ext}`;
+
   const ref = storage().ref(storagePath);
-  const task = ref.putFile(uri);
+  const task = ref.putFile(uri, { contentType });
   if (taskRef) taskRef.current = task;
   if (onProgress) {
     task.on('state_changed', (snap) => {
@@ -640,20 +749,32 @@ function audioToDocFields(audio: AudioSelection | undefined) {
   };
 }
 
-export async function postComment(videoId: string, text: string) {
+export async function postComment(
+  videoId: string,
+  text: string,
+  parentId?: string | null,
+) {
   const user = requireUser();
-  await commentsCol(videoId).add({
+  const trimmed = text.trim().slice(0, COMMENT_MAX_LENGTH);
+  if (!trimmed) throw new Error('Comment is empty');
+  // Batch the comment write + count increment so the denormalised
+  // `commentCount` can't drift if one of the two writes is rejected.
+  const commentRef = commentsCol(videoId).doc();
+  const batch = firestore().batch();
+  batch.set(commentRef, {
     authorId: user.uid,
     authorEmail: user.email ?? null,
-    text: text.trim(),
+    text: trimmed,
+    parentId: parentId ?? null,
+    likeCount: 0,
     createdAt: firestore.FieldValue.serverTimestamp(),
   });
-  // Maintain a denormalised count so admin dashboards / sort queries don't
-  // need to count the subcollection.
-  await videosCol().doc(videoId).set(
+  batch.set(
+    videosCol().doc(videoId),
     { commentCount: firestore.FieldValue.increment(1) },
     { merge: true },
   );
+  await batch.commit();
   track.commentPosted(videoId);
 }
 

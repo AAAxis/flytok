@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { BottomSheetView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   blockUser,
   reportContent,
@@ -32,13 +33,18 @@ export function ReportSheet({
   visible,
   onClose,
   onBlocked,
+  onReported,
 }: {
   target: ReportTarget;
   blockableUid?: string | null;
   visible: boolean;
   onClose: () => void;
+  /** Fired after the user successfully blocks the author. */
   onBlocked?: () => void;
+  /** Fired after the user successfully submits a report. */
+  onReported?: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const [reason, setReason] = useState<ReportReason | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState<'report' | 'block' | null>(null);
@@ -56,6 +62,7 @@ export function ReportSheet({
       Alert.alert('Thanks', 'We received your report and will review it within 24 hours.');
       reset();
       onClose();
+      onReported?.();
     } catch (err: any) {
       Alert.alert('Could not submit', err?.message ?? 'Try again later.');
     } finally {
@@ -79,14 +86,22 @@ export function ReportSheet({
     }
   }
 
+  // Use a fixed-height snap so all rows + Submit + Block + safe-area
+  // inset fit comfortably. Matches EditCaptionSheet's two-stage convention
+  // so the keyboard for the "Something else" note can push the sheet up.
+  const snapPoints: (string | number)[] =
+    blockableUid != null ? ['68%', '92%'] : ['58%', '92%'];
+
   return (
     <AppBottomSheet
       visible={visible}
       onClose={onClose}
-      enableDynamicSizing
+      snapPoints={snapPoints}
       title="Report"
     >
-      <BottomSheetView style={styles.body}>
+      <BottomSheetView
+        style={[styles.body, { paddingBottom: 16 + insets.bottom }]}
+      >
         <Text style={styles.sectionLabel}>Why are you reporting this?</Text>
         <View style={styles.reasons}>
           {REASONS.map((r) => (
@@ -136,17 +151,29 @@ export function ReportSheet({
         </Pressable>
 
         {blockableUid && (
-          <Pressable
-            onPress={handleBlock}
-            disabled={busy !== null}
-            style={({ pressed }) => [styles.block, pressed && styles.blockPressed]}
-          >
-            {busy === 'block' ? (
-              <ActivityIndicator color={colors.danger} />
-            ) : (
-              <Text style={styles.blockText}>Block this user</Text>
-            )}
-          </Pressable>
+          <>
+            <View style={styles.divider} />
+            <Pressable
+              onPress={handleBlock}
+              disabled={busy !== null}
+              style={({ pressed }) => [
+                styles.block,
+                pressed && styles.blockPressed,
+                busy !== null && styles.blockDisabled,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Block this user"
+            >
+              {busy === 'block' ? (
+                <ActivityIndicator color={colors.danger} />
+              ) : (
+                <>
+                  <Ionicons name="ban-outline" size={18} color={colors.danger} />
+                  <Text style={styles.blockText}>Block this user</Text>
+                </>
+              )}
+            </Pressable>
+          </>
         )}
       </BottomSheetView>
     </AppBottomSheet>
@@ -154,7 +181,7 @@ export function ReportSheet({
 }
 
 const styles = StyleSheet.create({
-  body: { paddingBottom: 24 },
+  body: { paddingTop: 4 },
   sectionLabel: {
     color: colors.textMuted,
     fontSize: 12,
@@ -166,13 +193,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     borderRadius: 8,
     backgroundColor: colors.bg,
     borderColor: colors.border,
     borderWidth: 1,
-    marginBottom: 6,
+    marginBottom: 8,
+    minHeight: 48,
   },
   reasonPressed: { opacity: 0.85 },
   reasonSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
@@ -197,13 +225,35 @@ const styles = StyleSheet.create({
     marginTop: 16,
     backgroundColor: colors.accent,
     borderRadius: 8,
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: 'center',
+    minHeight: 48,
+    justifyContent: 'center',
   },
   submitPressed: { backgroundColor: colors.accentDim },
   submitDisabled: { opacity: 0.5 },
   submitText: { color: colors.bg, fontSize: 14, fontWeight: '600' },
-  block: { marginTop: 12, paddingVertical: 10, alignItems: 'center' },
-  blockPressed: { opacity: 0.7 },
-  blockText: { color: colors.danger, fontSize: 14, fontWeight: '500' },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginHorizontal: 16,
+    marginTop: 20,
+  },
+  block: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingVertical: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    backgroundColor: 'transparent',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 48,
+  },
+  blockPressed: { opacity: 0.7, backgroundColor: 'rgba(248,113,113,0.08)' },
+  blockDisabled: { opacity: 0.5 },
+  blockText: { color: colors.danger, fontSize: 14, fontWeight: '600' },
 });

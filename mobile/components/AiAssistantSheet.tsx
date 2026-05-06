@@ -126,6 +126,7 @@ export function AiAssistantSheet({
       // keyboard without the user seeing a content-shift in flight.
       keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
+      enableContentPanningGesture={false}
       footerComponent={renderFooter}
     >
       <View style={styles.header}>

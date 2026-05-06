@@ -169,9 +169,10 @@ export default function Profile() {
                 onPress={() => setShowSettings(true)}
                 hitSlop={10}
                 style={[styles.iconBtn, { backgroundColor: themed.accentColor }]}
-                accessibilityLabel="Open settings menu"
+                accessibilityLabel="Settings, including delete account"
+                accessibilityRole="button"
               >
-                <Ionicons name="menu" size={20} color={colors.bg} />
+                <Ionicons name="settings-outline" size={20} color={colors.bg} />
               </Pressable>
               <View style={styles.handleCell} pointerEvents="box-none">
                 <View style={styles.handlePill}>

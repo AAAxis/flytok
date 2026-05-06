@@ -10,7 +10,7 @@ import {
   ViewToken,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { getMyVideos, getSavedVideoIds, getVideosByIds, type VideoDoc } from '@/lib/firestore';
+import { filterPlayable, getMyVideos, getSavedVideoIds, getVideosByIds, type VideoDoc } from '@/lib/firestore';
 import { FeedItem } from '@/components/FeedItem';
 import { usePlayerPool, type FeedPoolItem } from '@/lib/feed/usePlayerPool';
 import { getCachedVideoPath } from '@/lib/videoCache';
@@ -35,9 +35,11 @@ export default function UserPostsFeed() {
     if (!uid) return [] as VideoDoc[];
     if (source === 'saved') {
       const ids = await getSavedVideoIds(uid).catch(() => []);
-      return await getVideosByIds(ids).catch(() => []);
+      const list = await getVideosByIds(ids).catch(() => []);
+      return filterPlayable(list);
     }
-    return await getMyVideos(uid).catch(() => []);
+    const list = await getMyVideos(uid).catch(() => []);
+    return filterPlayable(list);
   }, [uid, source]);
 
   useEffect(() => {

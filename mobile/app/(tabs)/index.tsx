@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
+  filterPlayable,
   followingCol,
   getBlockedIds,
   videosCol,
@@ -31,6 +32,22 @@ import { colors } from '@/lib/theme';
 const TOP_OVERLAY_GAP = 8;
 
 const FALLBACK_HEIGHT = Dimensions.get('window').height;
+
+/**
+ * Fisher–Yates in place. Used to randomise the trending feed each time the
+ * user opens / refreshes — gives a different ordering on every fetch instead
+ * of always leading with the most-liked clip. The pool itself is already
+ * trimmed to recent uploads, so shuffling within the pool produces a
+ * TikTok/Reels-style fresh mix.
+ */
+function shuffleFeed<T>(input: readonly T[]): T[] {
+  const out = input.slice();
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
 
 type FeedTab = 'trending' | 'following';
 
@@ -83,32 +100,76 @@ export default function Feed() {
           all.push({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }),
         );
       }
-      const sorted = all
-        .filter((v) => !blockedIds.has(v.ownerId))
-        .sort((a, b) => {
-          const ta = a.createdAt?.toMillis?.() ?? 0;
-          const tb = b.createdAt?.toMillis?.() ?? 0;
-          return tb - ta;
-        });
+      const sorted = filterPlayable(
+        all
+          .filter((v) => !blockedIds.has(v.ownerId))
+          .sort((a, b) => {
+            const ta = a.createdAt?.toMillis?.() ?? 0;
+            const tb = b.createdAt?.toMillis?.() ?? 0;
+            return tb - ta;
+          }),
+      );
       setVideos(sorted);
       prefetchVideos(sorted.slice(0, 5).map((v) => v.downloadURL).filter(Boolean));
       return;
     }
 
-    // Trending pulls recent videos and sorts by likeCount.
-    const snap = await videosCol().orderBy('createdAt', 'desc').limit(50).get();
-    const list = snap.docs
-      .map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }))
-      .filter((v) => !blockedIds.has(v.ownerId))
-      .sort((a, b) => (b.likeCount ?? 0) - (a.likeCount ?? 0));
+    // Trending pulls a wider pool of recent videos and shuffles client-side
+    // so each open of the feed surfaces a different mix (TikTok / Reels style)
+    // instead of always leading with the most-liked clip. We still bias the
+    // first card slightly toward fresh content by oversampling recent posts
+    // and shuffling the rest.
+    const snap = await videosCol().orderBy('createdAt', 'desc').limit(150).get();
+    const pool = filterPlayable(
+      snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }))
+        .filter((v) => !blockedIds.has(v.ownerId)),
+    );
+
+    const list = shuffleFeed(pool).slice(0, 50);
 
     setVideos(list);
     prefetchVideos(list.slice(0, 5).map((v) => v.downloadURL).filter(Boolean));
   }, [tab, me]);
 
+  const listRef = useRef<FlatList<VideoDoc>>(null);
+
+  // Move past the current card. Called after a successful report (the post
+  // stays in Firestore so it doesn't disappear, but we don't want the
+  // reporter staring at it) and after a block when the active item itself
+  // wasn't the blocked author's only post (otherwise the in-memory filter
+  // already shifts the next item up under the same index — no scroll needed).
+  const advanceToNext = useCallback(() => {
+    setActiveIndex((current) => {
+      // Defer scrolling to next frame so any state updates that filter the
+      // list (e.g. block) settle first and `getItemLayout` resolves the
+      // correct offset.
+      requestAnimationFrame(() => {
+        try {
+          listRef.current?.scrollToIndex({
+            index: current + 1,
+            animated: true,
+          });
+        } catch {
+          // index out of range (last post) — silently ignore
+        }
+      });
+      return current;
+    });
+  }, []);
+
   const handleBlocked = useCallback((uid: string) => {
+    // Filter the blocked author's posts from the in-memory feed immediately
+    // so the user doesn't see another post from them on the very next swipe.
+    // Because activeIndex is preserved, removing the active item naturally
+    // shifts the next post up into the same slot — that IS the "advance to
+    // next" behaviour the product requested, with no extra scrollToIndex.
     setVideos((prev) => prev.filter((v) => v.ownerId !== uid));
   }, []);
+
+  const handleReported = useCallback(() => {
+    advanceToNext();
+  }, [advanceToNext]);
 
   useEffect(() => {
     setLoading(true);
@@ -197,6 +258,7 @@ export default function Feed() {
         </View>
       ) : (
         <FlatList
+          ref={listRef}
           data={videos}
           keyExtractor={(item) => item.id}
           renderItem={({ item, index }) => (
@@ -206,6 +268,7 @@ export default function Feed() {
               height={viewportHeight}
               player={pool.getPlayerForIndex(index)}
               onBlocked={handleBlocked}
+              onReported={handleReported}
             />
           )}
           pagingEnabled

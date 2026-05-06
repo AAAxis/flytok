@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.roamrez.flytok",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "googleServicesFile": "../firebase/GoogleService-Info.plist",
       "usesAppleSignIn": true,
       "infoPlist": {
@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "com.roamrez.flytok",
-      "versionCode": 2,
+      "versionCode": 3,
       "googleServicesFile": "../firebase/google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#000000",

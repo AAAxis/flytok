@@ -17,10 +17,36 @@ const ensured = (async () => {
   }
 })();
 
+/** Extracts the original file extension from a Firebase Storage download URL.
+ *
+ * Firebase URLs look like
+ *   https://firebasestorage.googleapis.com/v0/b/<bucket>/o/videos%2F<uid>%2F<ts>.mov?alt=media&token=...
+ * so the real extension is URL-encoded inside the path. We percent-decode the
+ * path part (everything before `?`), then take the trailing extension. Falls
+ * back to `mp4` so the cached file is never extensionless — AVPlayer on iOS
+ * can fail to detect format from a no-extension `file://` URL and silently
+ * leave the card black.
+ */
+function extensionForUrl(url: string): string {
+  try {
+    const path = url.split('?')[0] ?? url;
+    const decoded = decodeURIComponent(path);
+    const m = decoded.match(/\.([a-zA-Z0-9]{2,5})$/);
+    if (m) return m[1].toLowerCase();
+  } catch {
+    // malformed URL — fall through to default
+  }
+  return 'mp4';
+}
+
 function fileForUrl(url: string): string {
-  // Stable filename per URL. base64url avoids slashes/punctuation.
-  const safe = url.replace(/[^a-zA-Z0-9]/g, '_').slice(-150);
-  return CACHE_DIR + safe;
+  // Stable filename per URL. Non-alphanumerics collapse to `_` so we get a
+  // valid POSIX filename. We keep the extension out of the slice() window so
+  // it always survives even when the URL is long (Firebase tokens are ~120
+  // chars on their own and would otherwise eat the filename).
+  const ext = extensionForUrl(url);
+  const safe = url.replace(/[^a-zA-Z0-9]/g, '_').slice(-140);
+  return CACHE_DIR + safe + '.' + ext;
 }
 
 /** Returns the cached local path if it already exists, else null. */

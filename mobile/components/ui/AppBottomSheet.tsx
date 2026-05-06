@@ -55,6 +55,15 @@ type Props = {
   dismissOnBackdropTap?: boolean;
 
   /**
+   * Allow the inner content area to be dragged to dismiss the sheet.
+   * Defaults to true (matches gorhom). Set to false on sheets with text
+   * inputs — gorhom v4's content-pan gesture intercepts taps before
+   * `BottomSheetTextInput` can focus, so the input appears unresponsive.
+   * Drag-to-dismiss still works via the handle and the backdrop.
+   */
+  enableContentPanningGesture?: boolean;
+
+  /**
    * Optional sticky footer rendered via gorhom's `BottomSheetFooter`. Use
    * for chat-style composers that must sit just above the keyboard — gorhom
    * animates the footer with `animatedFooterPosition` so it tracks the
@@ -85,6 +94,7 @@ export const AppBottomSheet = forwardRef<AppBottomSheetHandle, Props>(function A
     keyboardBehavior = 'interactive',
     keyboardBlurBehavior = 'restore',
     dismissOnBackdropTap = true,
+    enableContentPanningGesture = true,
     footerComponent,
     children,
   },
@@ -153,6 +163,7 @@ export const AppBottomSheet = forwardRef<AppBottomSheetHandle, Props>(function A
       keyboardBlurBehavior={keyboardBlurBehavior}
       android_keyboardInputMode="adjustResize"
       enablePanDownToClose
+      enableContentPanningGesture={enableContentPanningGesture}
       footerComponent={footerComponent}
     >
       {title ? (

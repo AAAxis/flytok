@@ -53,7 +53,7 @@ export default function Terms() {
             Audio you upload is your responsibility. By uploading, you confirm you have the right
             to use it, including any necessary licenses, and that the audio doesn't infringe
             anyone else's copyright or other rights. We honor takedown requests sent to
-            support@flytok.com — we'll review and remove infringing content as fast as we can.
+            support@roamerz.app — we'll review and remove infringing content as fast as we can.
           </Text>
 
           <Text style={styles.h2}>Disclaimer</Text>

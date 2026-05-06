@@ -10,7 +10,7 @@ import {
   ViewToken,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { getBlockedIds, videosCol, type VideoDoc } from '@/lib/firestore';
+import { filterPlayable, getBlockedIds, videosCol, type VideoDoc } from '@/lib/firestore';
 import { FeedItem } from '@/components/FeedItem';
 import { usePlayerPool, type FeedPoolItem } from '@/lib/feed/usePlayerPool';
 import { getCachedVideoPath } from '@/lib/videoCache';
@@ -52,7 +52,7 @@ export default function TagFeed() {
         const tb = b.createdAt?.toMillis?.() ?? 0;
         return tb - ta;
       });
-      return list;
+      return filterPlayable(list);
     } catch (err) {
       console.warn('[tag-feed] load failed:', err);
       return [];

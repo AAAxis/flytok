@@ -54,7 +54,7 @@ export default function Privacy() {
 
           <Text style={styles.h2}>Contact</Text>
           <Text style={styles.p}>
-            Questions? Email support@flytok.app.
+            Questions? Email support@roamerz.app.
           </Text>
 
           <Text style={styles.updated}>Last updated April 2026.</Text>

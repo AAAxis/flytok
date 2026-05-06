@@ -10,7 +10,7 @@ import {
   ViewToken,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { getBlockedIds, videosCol, type VideoDoc } from '@/lib/firestore';
+import { filterPlayable, getBlockedIds, videosCol, type VideoDoc } from '@/lib/firestore';
 import { FeedItem } from '@/components/FeedItem';
 import { usePlayerPool, type FeedPoolItem } from '@/lib/feed/usePlayerPool';
 import { getCachedVideoPath } from '@/lib/videoCache';
@@ -48,13 +48,15 @@ export default function PlaceFeed() {
         videosCol().limit(500).get(),
         getBlockedIds(),
       ]);
-      return snap.docs
-        .map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }))
-        .filter(
-          (v) =>
-            v.location?.label?.trim().toLowerCase() === matchKey &&
-            !blockedIds.has(v.ownerId),
-        );
+      return filterPlayable(
+        snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }))
+          .filter(
+            (v) =>
+              v.location?.label?.trim().toLowerCase() === matchKey &&
+              !blockedIds.has(v.ownerId),
+          ),
+      );
     } catch (err) {
       console.warn('[place-feed] load failed:', err);
       return [];

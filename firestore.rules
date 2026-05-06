@@ -103,13 +103,29 @@ service cloud.firestore {
                     || (signedIn() && resource.data.ownerId == request.auth.uid);
 
       // Comments: anyone signed-in reads/posts; author or admin deletes.
+      // Top-level comments and replies use the same rule — replies are
+      // distinguished by the optional `parentId` field, which is just data.
       match /comments/{commentId} {
         allow read:   if signedIn();
         allow create: if signedIn()
                       && request.resource.data.authorId == request.auth.uid;
-        allow update: if false;
+        // The original author can never edit; any signed-in user may bump
+        // ONLY the denormalised `likeCount`, which `toggleCommentLike` does
+        // alongside the per-user like-doc write below.
+        allow update: if signedIn()
+                      && onlyAffects(['likeCount']);
         allow delete: if isAdmin()
                       || (signedIn() && resource.data.authorId == request.auth.uid);
+
+        // Per-comment likes: doc id IS the liker's uid (matches
+        // commentLikesCol(videoId, commentId).doc(uid)). Reads are open to
+        // any signed-in user so callers can hydrate "did I like this?",
+        // writes are restricted to the liker themselves.
+        match /likes/{likeUid} {
+          allow read:           if signedIn();
+          allow create, delete: if isSelf(likeUid);
+          allow update:         if false;
+        }
       }
 
       // Likes: doc id is the liker's uid (matches likesCol(videoId).doc(uid)).

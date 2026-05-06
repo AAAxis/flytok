@@ -22,11 +22,11 @@ export function SettingsSheet({
   function confirmDelete() {
     Alert.alert(
       'Delete account?',
-      'This permanently removes your Roamerz account.',
+      'This permanently removes your Roamerz account, profile, videos, and messages. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Delete account',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -34,8 +34,20 @@ export function SettingsSheet({
             } catch (err: any) {
               if (err?.code === 'auth/requires-recent-login') {
                 Alert.alert(
-                  'Sign in again',
-                  'For security, sign out and sign in again, then delete your account.',
+                  'Sign in again to delete',
+                  "For your security, please sign in again, then delete your account. We'll sign you out now.",
+                  [
+                    {
+                      text: 'OK',
+                      onPress: async () => {
+                        try {
+                          await logout();
+                        } catch {
+                          // best-effort
+                        }
+                      },
+                    },
+                  ],
                 );
               } else {
                 Alert.alert('Could not delete', err?.message ?? 'Try again later.');
