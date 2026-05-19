@@ -26,8 +26,15 @@ export default async function handler(req, res) {
   } = process.env;
 
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    console.error('SMTP env vars missing');
-    return res.status(500).json({ error: 'Server email not configured' });
+    return res.status(500).json({
+      error: 'Server email not configured',
+      detail: {
+        host: SMTP_HOST ? 'set' : 'MISSING',
+        user: SMTP_USER ? 'set' : 'MISSING',
+        pass: SMTP_PASS ? 'set' : 'MISSING',
+        port: SMTP_PORT || '(default 587)',
+      },
+    });
   }
 
   const port = Number(SMTP_PORT) || 587;
@@ -36,19 +43,36 @@ export default async function handler(req, res) {
     port,
     secure: port === 465,
     auth: { user: SMTP_USER, pass: SMTP_PASS },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
 
   try {
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: SMTP_FROM || SMTP_USER,
       to: RECIPIENTS.join(','),
       replyTo: email.trim(),
       subject: `Contact from ${name.trim()}`,
       text: `Name: ${name.trim()}\nEmail: ${email.trim()}\n\n${message.trim()}`,
     });
-    return res.status(200).json({ ok: true });
+    console.log('Email sent:', info.messageId);
+    return res.status(200).json({ ok: true, messageId: info.messageId });
   } catch (err) {
     console.error('sendMail failed', err);
-    return res.status(500).json({ error: 'Send failed' });
+    return res.status(500).json({
+      error: 'Send failed',
+      detail: {
+        code: err.code || null,
+        command: err.command || null,
+        responseCode: err.responseCode || null,
+        response: err.response || null,
+        message: err.message || String(err),
+        host: SMTP_HOST,
+        port,
+        secure: port === 465,
+        user: SMTP_USER,
+      },
+    });
   }
 }

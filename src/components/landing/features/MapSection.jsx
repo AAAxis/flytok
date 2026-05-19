@@ -126,12 +126,11 @@ export default function MapSection() {
 
     // ── Earth ────────────────────────────────────────────────
     const loader = new THREE.TextureLoader();
-    loader.crossOrigin = 'anonymous';
     const earthSegments = isMobile ? 32 : 64; // Reduced segments on mobile
     const earthGeo = new THREE.SphereGeometry(1, earthSegments, earthSegments);
     const earthMat = new THREE.MeshPhongMaterial({
-      map:         loader.load('https://cdn.jsdelivr.net/npm/three-globe@2.45.2/example/img/earth-day.jpg'),
-      specularMap: loader.load('https://cdn.jsdelivr.net/npm/three-globe@2.45.2/example/img/earth-water.png'),
+      map:         loader.load('/textures/earth-day.jpg'),
+      specularMap: loader.load('/textures/earth-water.png'),
       specular:    new THREE.Color(0x2244aa),
       shininess:   isMobile ? 20 : 35, // Lower shininess on mobile
     });
@@ -140,7 +139,7 @@ export default function MapSection() {
 
     // ── Night side lights ────────────────────────────────────
     const nightMat = new THREE.MeshBasicMaterial({
-      map: loader.load('https://cdn.jsdelivr.net/npm/three-globe@2.45.2/example/img/earth-night.jpg'),
+      map: loader.load('/textures/earth-night.jpg'),
       blending: THREE.AdditiveBlending,
       transparent: true,
       opacity: isMobile ? 0.35 : 0.55, // Reduced opacity on mobile
@@ -150,7 +149,7 @@ export default function MapSection() {
     // ── Clouds ───────────────────────────────────────────────
     const cloudSegments = isMobile ? 24 : 48;
     const cloudMat = new THREE.MeshPhongMaterial({
-      map: loader.load('https://cdn.jsdelivr.net/npm/three-globe@2.45.2/example/img/earth-clouds.png'),
+      map: loader.load('/textures/earth-clouds.png'),
       transparent: true, opacity: isMobile ? 0.25 : 0.35,
       depthWrite: false,
     });
