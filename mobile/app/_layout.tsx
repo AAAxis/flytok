@@ -143,9 +143,10 @@ function Gate() {
     if (loading || seen === null) return;
     const onLogin = segments[0] === 'login';
     const onOnboarding = segments[0] === 'onboarding';
-    if (!user && !seen && !onOnboarding) {
+    const onLegal = segments[0] === 'legal';
+    if (!user && !seen && !onOnboarding && !onLegal) {
       router.replace('/onboarding');
-    } else if (!user && seen && !onLogin && !onOnboarding) {
+    } else if (!user && seen && !onLogin && !onOnboarding && !onLegal) {
       router.replace('/login');
     } else if (user && (onLogin || onOnboarding)) {
       router.replace('/');

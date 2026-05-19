@@ -18,7 +18,7 @@
         "NSCameraUsageDescription": "Roamerz uses the camera to record travel videos.",
         "NSPhotoLibraryUsageDescription": "Roamerz needs access to your photo library to upload travel videos.",
         "NSMicrophoneUsageDescription": "Roamerz records audio with your travel videos.",
-        "NSLocationWhenInUseUsageDescription": "Roamerz uses your location to show nearby places on the map and tag uploads."
+        "NSLocationWhenInUseUsageDescription": "Roamerz uses your location to show nearby places, attractions, and points of interest on the map so you can discover what's around you right now."
       }
     },
     "android": {
@@ -94,7 +94,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Roamerz uses your location to show nearby places on the map."
+          "locationWhenInUsePermission": "Roamerz uses your location to show nearby places, attractions, and points of interest on the map so you can discover what's around you right now."
         }
       ],
       [
