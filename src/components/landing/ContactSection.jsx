@@ -41,7 +41,8 @@ export default function ContactSection() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Server error (${res.status})`);
+        const detailStr = data.detail ? ` — ${JSON.stringify(data.detail)}` : '';
+        throw new Error(`${data.error || `Server error (${res.status})`}${detailStr}`);
       }
       setStatus('sent');
       setName('');
@@ -267,9 +268,15 @@ export default function ContactSection() {
           {status === 'error' && (
             <div style={{
               color: '#f87171',
-              fontSize: 13,
+              fontSize: 12,
               marginTop: 4,
-              textAlign: 'center',
+              textAlign: 'left',
+              wordBreak: 'break-word',
+              fontFamily: 'monospace',
+              background: 'rgba(248,113,113,0.08)',
+              border: '1px solid rgba(248,113,113,0.2)',
+              borderRadius: 8,
+              padding: '10px 12px',
             }}>
               {errorMsg || 'Send failed. Please try again.'}
             </div>
