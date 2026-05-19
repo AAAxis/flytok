@@ -128,22 +128,6 @@ export default function DownloadSection() {
             <StoreBtn name="Google Play" Icon={Play} sub="Get it on" />
           </div>
 
-          {/* QR placeholder */}
-          <div style={{
-            opacity: visible ? 1 : 0,
-            transition: 'opacity 0.8s ease 0.6s',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-          }}>
-            <div style={{
-              width: 80, height: 80, borderRadius: 12,
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(56,189,248,0.2)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 32,
-            }}>📱</div>
-            <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11, letterSpacing: '0.06em' }}>Scan to download</span>
-          </div>
-
         </div>
       </section>
     </>

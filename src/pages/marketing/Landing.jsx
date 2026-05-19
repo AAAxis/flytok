@@ -5,6 +5,7 @@ import MapSection from '@/components/landing/features/MapSection.jsx';
 import ExploreSection from '@/components/landing/ExploreSection.jsx';
 import ShareSection from '@/components/landing/ShareSection.jsx';
 import DownloadSection from '@/components/landing/DownloadSection.jsx';
+import ContactSection from '@/components/landing/ContactSection.jsx';
 import CinematicOverlay from '@/components/landing/CinematicOverlay.jsx';
 import HeroSection from '@/components/landing/hero/HeroSection.jsx';
 import ScrollBird from '@/components/landing/ScrollBird.jsx';
@@ -51,6 +52,10 @@ export default function Landing() {
 
       <div style={{ position: 'relative', zIndex: 10 }}>
         <DownloadSection />
+      </div>
+
+      <div style={{ position: 'relative', zIndex: 10 }}>
+        <ContactSection />
       </div>
     </div>
   );

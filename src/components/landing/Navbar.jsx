@@ -11,7 +11,7 @@ export default function Navbar() {
     const onScroll = () => {
       setScrolled(window.scrollY > 20);
 
-      const sections = ['download', 'share', 'discover', 'features', 'home'];
+      const sections = ['contact', 'download', 'share', 'discover', 'features', 'home'];
       for (const id of sections) {
         const el = document.getElementById(id);
         if (el && el.getBoundingClientRect().top <= window.innerHeight / 2) {
@@ -107,11 +107,21 @@ export default function Navbar() {
         >
           Download
         </button>
+        <button
+          onClick={() => scrollTo('contact')}
+          className={`text-sm font-semibold px-4 py-1.5 rounded-lg transition-all duration-300 ${
+            activeSection === 'contact'
+              ? 'text-[#38bdf8] bg-[#38bdf8]/10 shadow-[0_0_12px_rgba(56,189,248,0.25)]'
+              : 'text-white/60 hover:text-white hover:bg-white/8'
+          }`}
+        >
+          Contact
+        </button>
       </div>
       {/* Desktop CTA Button */}
       <div className="hidden md:flex items-center">
         <button
-          onClick={() => scrollTo('download')}
+          onClick={() => scrollTo('contact')}
           className="text-sm font-semibold px-5 py-2 rounded-full transition-all duration-300"
           style={{
             background: 'linear-gradient(135deg, rgba(56,189,248,0.18), rgba(56,189,248,0.08))',
@@ -158,6 +168,7 @@ export default function Navbar() {
             { label: 'Discover', id: 'discover' },
             { label: 'Share', id: 'share' },
             { label: 'Download', id: 'download' },
+            { label: 'Contact', id: 'contact' },
           ].map(({ label, id }) => (
             <button
               key={id}
@@ -174,7 +185,7 @@ export default function Navbar() {
           ))}
           <div className="px-6 py-5">
             <button
-              onClick={() => { scrollTo('download'); setMobileMenuOpen(false); }}
+              onClick={() => { scrollTo('contact'); setMobileMenuOpen(false); }}
               className="w-full text-base font-bold py-3.5 rounded-xl transition-all"
               style={{
                 background: 'linear-gradient(135deg, #1a7fa0, #0e5f7a)',
