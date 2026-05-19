@@ -10,7 +10,8 @@ export default function ContactSection() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
-  const [sent, setSent] = useState(false);
+  const [status, setStatus] = useState('idle'); // 'idle' | 'sending' | 'sent' | 'error'
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -23,15 +24,33 @@ export default function ContactSection() {
 
   const canSubmit = name.trim() && email.trim() && message.trim();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!canSubmit) return;
-    const subject = encodeURIComponent(`Contact from ${name.trim()}`);
-    const body = encodeURIComponent(
-      `Name: ${name.trim()}\nEmail: ${email.trim()}\n\n${message.trim()}`
-    );
-    window.location.href = `mailto:${CONTACT_EMAILS.join(',')}?subject=${subject}&body=${body}`;
-    setSent(true);
+    if (!canSubmit || status === 'sending') return;
+    setStatus('sending');
+    setErrorMsg('');
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          message: message.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Server error (${res.status})`);
+      }
+      setStatus('sent');
+      setName('');
+      setEmail('');
+      setMessage('');
+    } catch (err) {
+      setStatus('error');
+      setErrorMsg(err.message || 'Send failed');
+    }
   };
 
   const inputStyle = {
@@ -210,7 +229,7 @@ export default function ContactSection() {
 
             <button
               type="submit"
-              disabled={!canSubmit}
+              disabled={!canSubmit || status === 'sending'}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -225,15 +244,36 @@ export default function ContactSection() {
                   : 'rgba(255,255,255,0.06)',
                 color: canSubmit ? '#fff' : 'rgba(255,255,255,0.3)',
                 border: '1px solid transparent',
-                cursor: canSubmit ? 'pointer' : 'default',
+                cursor: canSubmit && status !== 'sending' ? 'pointer' : 'default',
                 boxShadow: canSubmit ? '0 0 24px rgba(56,189,248,0.25)' : 'none',
                 transition: 'all 0.2s ease',
               }}
             >
               <Send size={14} />
-              {sent ? 'Opening your mail app…' : 'Send message'}
+              {status === 'sending' ? 'Sending…' : status === 'sent' ? 'Sent ✓' : 'Send message'}
             </button>
           </div>
+
+          {status === 'sent' && (
+            <div style={{
+              color: '#4ade80',
+              fontSize: 13,
+              marginTop: 4,
+              textAlign: 'center',
+            }}>
+              Thanks — we'll be in touch soon.
+            </div>
+          )}
+          {status === 'error' && (
+            <div style={{
+              color: '#f87171',
+              fontSize: 13,
+              marginTop: 4,
+              textAlign: 'center',
+            }}>
+              {errorMsg || 'Send failed. Please try again.'}
+            </div>
+          )}
         </form>
       </div>
 
