@@ -17,13 +17,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid email address' });
   }
 
-  const {
-    SMTP_HOST,
-    SMTP_PORT,
-    SMTP_USER,
-    SMTP_PASS,
-    SMTP_FROM,
-  } = process.env;
+  const SMTP_HOST = process.env.SMTP_HOST?.trim();
+  const SMTP_PORT = process.env.SMTP_PORT?.trim();
+  const SMTP_USER = process.env.SMTP_USER?.trim();
+  const SMTP_PASS = process.env.SMTP_PASS; // never trim a password
+  const SMTP_FROM = process.env.SMTP_FROM?.trim();
 
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
     return res.status(500).json({
