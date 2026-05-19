@@ -194,3 +194,9 @@ button:focus-visible {
 .animate-wobble {
   animation: wobble 2s ease-in-out infinite;
 }
+
+/* Mobile safety: prevent any element from causing horizontal scroll. */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}

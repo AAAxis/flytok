@@ -133,12 +133,18 @@ export default function ShareSection() {
               {/* Stars */}
               <div className="flex gap-1 mb-4" onMouseLeave={() => setHoveredStar(0)}>
                 {[1,2,3,4,5].map(star => (
-                  <span key={star} onMouseEnter={() => setHoveredStar(star)}
+                  <span
+                    key={star}
+                    onMouseEnter={() => setHoveredStar(star)}
+                    onClick={() => setHoveredStar(star)}
+                    onTouchStart={() => setHoveredStar(star)}
                     style={{
                       fontSize: 26, cursor: 'pointer',
+                      padding: '4px 2px',
                       color: star <= hoveredStar ? '#facc15' : 'rgba(255,255,255,0.18)',
                       transition: 'color 0.15s ease, text-shadow 0.15s ease',
                       textShadow: star <= hoveredStar ? '0 0 12px rgba(250,204,21,0.9)' : 'none',
+                      userSelect: 'none',
                     }}>★</span>
                 ))}
               </div>

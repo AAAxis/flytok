@@ -468,7 +468,7 @@ export default function MapSection() {
 
             {/* Drag hint */}
             <div style={{ textAlign:'center', marginTop:12, fontSize:12, color:'rgba(255,255,255,0.25)', letterSpacing:'0.08em' }}>
-              ↔ Drag to rotate · Scroll to zoom
+              {isDesktop ? '↔ Drag to rotate · Scroll to zoom' : '↔ Drag to rotate · Pinch to zoom'}
             </div>
           </div>
 

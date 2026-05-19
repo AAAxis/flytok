@@ -180,11 +180,11 @@ export default function PhoneVideoScroll({ visible }) {
 
   return (
     <div style={{ perspective: '1000px', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px 0' }}>
-      {/* 3D Phone Shell */}
+      {/* 3D Phone Shell — responsive: shrinks on narrow viewports */}
       <div style={{
-        width: 220,
-        height: 440,
-        borderRadius: 36,
+        width: 'min(220px, 58vw)',
+        aspectRatio: '220 / 440',
+        borderRadius: '8%',
         background: '#111',
         border: '3px solid #2a2a2a',
         boxShadow: '0 40px 80px rgba(0,0,0,0.8), 12px 12px 40px rgba(0,0,0,0.5), -2px -2px 10px rgba(255,255,255,0.04)',

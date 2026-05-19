@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import useIsMobile from './useIsMobile';
 
 const TRAIL_COUNT = 10; // Reduced for performance
 
@@ -13,8 +14,10 @@ export default function ScrollBird() {
   const trailRef = useRef([]);
   const timeRef = useRef(0);
   const wingsRef = useRef(0);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
+    if (isMobile) return; // skip bird animation entirely on mobile
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -155,7 +158,9 @@ export default function ScrollBird() {
       window.removeEventListener('resize', resize);
       window.removeEventListener('scroll', onScroll);
     };
-  }, []);
+  }, [isMobile]);
+
+  if (isMobile) return null;
 
   return (
     <canvas

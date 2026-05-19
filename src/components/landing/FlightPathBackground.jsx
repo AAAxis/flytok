@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import useIsMobile from './useIsMobile';
 
 /**
  * Animated 3D background for the "Why Roamerz Wins" section.
@@ -7,11 +8,14 @@ import * as THREE from 'three';
  * - Slow drifting nebula particles (cyan + gold)
  * - Soft directional light from top-left
  * Absolutely positioned to fill parent, z-index 0, pointer-events none.
+ * Disabled on mobile (extra three.js scene on top of the globe is too heavy).
  */
 export default function FlightPathBackground({ visible }) {
   const mountRef = useRef(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
+    if (isMobile) return;
     const el = mountRef.current;
     if (!el) return;
 
@@ -196,7 +200,9 @@ export default function FlightPathBackground({ visible }) {
       renderer.dispose();
       if (el.contains(renderer.domElement)) el.removeChild(renderer.domElement);
     };
-  }, []);
+  }, [isMobile]);
+
+  if (isMobile) return null;
 
   return (
     <div

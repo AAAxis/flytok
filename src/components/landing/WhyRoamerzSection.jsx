@@ -78,6 +78,7 @@ function Card({ card, index, hovered, setHovered, visible, isCardVisible }) {
       }}
       onMouseEnter={() => setHovered(index)}
       onMouseLeave={() => setHovered(null)}
+      onClick={() => setHovered((prev) => (prev === index ? null : index))}
     >
       {/* Inner top gloss line */}
       <div style={{

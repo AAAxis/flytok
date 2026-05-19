@@ -285,7 +285,7 @@ export default function ContactSection() {
       </div>
 
       <style>{`
-        @media (max-width: 540px) {
+        @media (max-width: 640px) {
           .contact-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>

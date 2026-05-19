@@ -1,15 +1,19 @@
 import { useEffect, useRef } from 'react';
+import useIsMobile from './useIsMobile';
 
 /**
  * Full-screen grain noise + vignette overlay.
  * Renders once on a canvas and updates ~24fps for film-grain feel.
  * Sits above everything with pointer-events:none so it never blocks clicks.
+ * Skips grain canvas on mobile (writing W*H*4 pixels per frame tanks perf).
  */
 export default function CinematicOverlay({ grainOpacity = 0.045, vignetteOpacity = 0.72 }) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
+    if (isMobile) return; // grain canvas off on mobile
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -48,24 +52,26 @@ export default function CinematicOverlay({ grainOpacity = 0.045, vignetteOpacity
       cancelAnimationFrame(rafRef.current);
       window.removeEventListener('resize', resize);
     };
-  }, []);
+  }, [isMobile]);
 
   return (
     <>
-      {/* Grain canvas */}
-      <canvas
-        ref={canvasRef}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 9998,
-          pointerEvents: 'none',
-          opacity: grainOpacity * 0.6, // Reduced grain intensity
-          mixBlendMode: 'overlay',
-          willChange: 'transform',
-          transform: 'translateZ(0)',
-        }}
-      />
+      {/* Grain canvas — desktop only */}
+      {!isMobile && (
+        <canvas
+          ref={canvasRef}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9998,
+            pointerEvents: 'none',
+            opacity: grainOpacity * 0.6,
+            mixBlendMode: 'overlay',
+            willChange: 'transform',
+            transform: 'translateZ(0)',
+          }}
+        />
+      )}
       {/* Vignette */}
       <div
         style={{

@@ -105,8 +105,10 @@ export default function HeroStepper({ activeStep }) {
         borderRadius: 999,
         padding: '8px 12px',
         boxShadow: '0 4px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
-        maxWidth: '92vw',
-        overflow: 'hidden',
+        maxWidth: 'calc(100vw - 32px)',
+        overflowX: 'auto',
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
       }}
     >
       {steps.map((step, i) => {
