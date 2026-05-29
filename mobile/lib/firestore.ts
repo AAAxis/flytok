@@ -90,6 +90,8 @@ export type CommentDoc = {
   parentId?: string | null;
   /** Denormalised like count maintained inside `toggleCommentLike`. */
   likeCount?: number;
+  /** 1–5 star rating attached to the comment. 0/undefined = unrated. */
+  rating?: number;
 };
 
 /** Hard cap to keep abusive payloads out of Firestore. Mirrors the chat composer. */
@@ -520,6 +522,23 @@ export async function toggleCommentLike(
     tx.set(commentRef, { likeCount: current + 1 }, { merge: true });
     return true;
   });
+}
+
+/**
+ * Attach a 1–5 star rating to a comment. Tapping the already-selected star
+ * value clears the rating (passes 0). Stored denormalised on the comment doc
+ * so the feed/comment list can render it without an extra read.
+ */
+export async function setCommentRating(
+  videoId: string,
+  commentId: string,
+  rating: number,
+): Promise<void> {
+  requireUser();
+  const clamped = Math.max(0, Math.min(5, Math.round(rating)));
+  await commentsCol(videoId)
+    .doc(commentId)
+    .set({ rating: clamped }, { merge: true });
 }
 
 /**

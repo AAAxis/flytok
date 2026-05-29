@@ -3,6 +3,7 @@ import auth from '@react-native-firebase/auth';
 import {
   ActivityIndicator,
   Image,
+  Platform,
   Pressable,
   Share,
   StyleSheet,
@@ -25,10 +26,15 @@ type Profile = { displayName: string | null; photoURL: string | null };
 
 // Public-web URL template for a single video. The web reference app at
 // flytok-main routes /v/:id to the same video, so this link is stable.
-function defaultExternalShare(video: VideoDoc): { message: string; url: string } {
+function defaultExternalShare(video: VideoDoc): {
+  message: string;
+  url: string;
+  caption: string;
+} {
   const url = `https://flytok.vercel.app/v/${video.id}`;
-  const message = video.caption ? `${video.caption}\n\n${url}` : url;
-  return { message, url };
+  const caption = video.caption?.trim() ?? '';
+  const message = caption ? `${caption}\n\n${url}` : url;
+  return { message, url, caption };
 }
 
 export function ShareToChatSheet({
@@ -42,7 +48,7 @@ export function ShareToChatSheet({
   visible: boolean;
   onClose: () => void;
   onSent?: () => void;
-  externalShare?: { message: string; url: string };
+  externalShare?: { message: string; url: string; caption?: string };
 }) {
   const me = auth().currentUser;
   const [threads, setThreads] = useState<ThreadDoc[]>([]);
@@ -87,8 +93,23 @@ export function ShareToChatSheet({
   );
 
   async function shareExternally() {
+    // Don't put the URL in both `message` and `url` — iOS treats them as two
+    // separate share items and the target app concatenates them, so the link
+    // showed up twice. On iOS we keep the URL only in the `url` field (which
+    // also drives the rich link preview) and pass the caption as the message.
+    // Android ignores the `url` field entirely, so there the link must live
+    // inside `message`.
+    const caption = externalPayload.caption ?? '';
     try {
-      await Share.share({ message: externalPayload.message, url: externalPayload.url });
+      if (Platform.OS === 'ios') {
+        await Share.share(
+          caption
+            ? { message: caption, url: externalPayload.url }
+            : { url: externalPayload.url },
+        );
+      } else {
+        await Share.share({ message: externalPayload.message });
+      }
     } catch {
       // user cancelled or platform error — leave the sheet open
       return;

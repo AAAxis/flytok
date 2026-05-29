@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
   followText: { color: colors.bg, fontSize: 11, fontWeight: '700' },
   followingText: { color: colors.text },
   caption: { color: colors.text, fontSize: 13, opacity: 0.95 },
-  actions: { gap: 18, alignItems: 'center' },
-  actionButton: { alignItems: 'center', gap: 4 },
+  actions: { gap: 28, alignItems: 'center' },
+  actionButton: { alignItems: 'center', gap: 6 },
   actionLabel: { color: colors.text, fontSize: 11, fontWeight: '600' },
 });

@@ -109,11 +109,12 @@ service cloud.firestore {
         allow read:   if signedIn();
         allow create: if signedIn()
                       && request.resource.data.authorId == request.auth.uid;
-        // The original author can never edit; any signed-in user may bump
-        // ONLY the denormalised `likeCount`, which `toggleCommentLike` does
-        // alongside the per-user like-doc write below.
+        // The original author can never edit the text; any signed-in user may
+        // bump the denormalised `likeCount` (via `toggleCommentLike`, alongside
+        // the per-user like-doc write below) or attach a star `rating` (via
+        // `setCommentRating`).
         allow update: if signedIn()
-                      && onlyAffects(['likeCount']);
+                      && onlyAffects(['likeCount', 'rating']);
         allow delete: if isAdmin()
                       || (signedIn() && resource.data.authorId == request.auth.uid);
 

@@ -17,12 +17,16 @@ import {
   getCommentsLikedByMe,
   getUserLabel,
   postComment,
+  setCommentRating,
   toggleCommentLike,
   type CommentDoc,
 } from '@/lib/firestore';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { useBlockedSet } from '@/lib/blockSet';
 import { colors } from '@/lib/theme';
+
+/** Gold used for filled stars — matches the website Share section. */
+const STAR_COLOR = '#facc15';
 
 type ReplyTarget = {
   /** Top-level comment id the reply will be attached to. */
@@ -166,6 +170,29 @@ export function CommentsSheet({
     [likedSet, videoId],
   );
 
+  const handleRate = useCallback(
+    async (commentId: string, rating: number) => {
+      // Optimistic write — restore the previous value if the write throws.
+      let prevRating = 0;
+      setComments((prev) =>
+        prev.map((c) => {
+          if (c.id !== commentId) return c;
+          prevRating = c.rating ?? 0;
+          return { ...c, rating };
+        }),
+      );
+      try {
+        await setCommentRating(videoId, commentId, rating);
+      } catch (err: any) {
+        setComments((prev) =>
+          prev.map((c) => (c.id === commentId ? { ...c, rating: prevRating } : c)),
+        );
+        Alert.alert('Could not save rating', err?.message ?? 'Please try again.');
+      }
+    },
+    [videoId],
+  );
+
   const handleReply = useCallback((target: ReplyTarget) => {
     setReplyTo(target);
   }, []);
@@ -214,6 +241,7 @@ export function CommentsSheet({
             liked={likedSet.has(item.comment.id)}
             onLikeToggle={handleLikeToggle}
             onReply={handleReply}
+            onRate={handleRate}
           />
         )}
         ListEmptyComponent={
@@ -330,9 +358,45 @@ type CommentRowProps = {
   liked: boolean;
   onLikeToggle: (commentId: string) => void;
   onReply: (target: ReplyTarget) => void;
+  onRate: (commentId: string, rating: number) => void;
 };
 
-function CommentRow({ comment, depth, liked, onLikeToggle, onReply }: CommentRowProps) {
+/**
+ * Tappable 5-star row, styled to match the website Share box (gold stars).
+ * Tapping the current rating again clears it back to 0.
+ */
+function StarRating({
+  rating,
+  onChange,
+}: {
+  rating: number;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <View style={styles.starRow} accessibilityRole="adjustable" accessibilityLabel={`Rating ${rating} of 5`}>
+      {[1, 2, 3, 4, 5].map((star) => {
+        const filled = star <= rating;
+        return (
+          <Pressable
+            key={star}
+            onPress={() => onChange(star === rating ? 0 : star)}
+            hitSlop={6}
+            style={styles.starTap}
+            accessibilityLabel={`Rate ${star} star${star === 1 ? '' : 's'}`}
+          >
+            <Ionicons
+              name={filled ? 'star' : 'star-outline'}
+              size={16}
+              color={filled ? STAR_COLOR : colors.textFaint}
+            />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function CommentRow({ comment, depth, liked, onLikeToggle, onReply, onRate }: CommentRowProps) {
   const initial = getCachedUserLabel(comment.authorId) ?? `User ${comment.authorId.slice(0, 6)}`;
   const [label, setLabel] = useState(initial);
   useEffect(() => {
@@ -350,12 +414,14 @@ function CommentRow({ comment, depth, liked, onLikeToggle, onReply }: CommentRow
   const rootId = comment.parentId ?? comment.id;
   const handleReplyTap = () => onReply({ rootId, authorLabel: label });
   const handleLikeTap = () => onLikeToggle(comment.id);
+  const handleRate = (next: number) => onRate(comment.id, next);
 
   return (
     <View style={[styles.commentRow, depth === 1 && styles.commentRowReply]}>
       <View style={styles.commentBody}>
         <Text style={styles.author}>{label}</Text>
         <Text style={styles.text}>{comment.text}</Text>
+        <StarRating rating={comment.rating ?? 0} onChange={handleRate} />
         <Pressable onPress={handleReplyTap} hitSlop={6} accessibilityLabel="Reply to comment">
           <Text style={styles.replyAction}>Reply</Text>
         </Pressable>
@@ -405,6 +471,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
+  starRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginTop: 4,
+  },
+  starTap: { padding: 1 },
   likeColumn: {
     alignItems: 'center',
     minWidth: 24,

@@ -20,7 +20,7 @@ export default function Logo({ size = 'md', showText = true }) {
       {showText && (
         <div className="flex items-baseline">
           <span className={`${s.text} font-extrabold text-white`}>Roam</span>
-          <span className={`${s.text} font-extrabold text-sky-400`}>rez</span>
+          <span className={`${s.text} font-extrabold text-sky-400`}>erz</span>
         </div>
       )}
     </div>

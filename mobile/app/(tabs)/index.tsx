@@ -52,8 +52,8 @@ function shuffleFeed<T>(input: readonly T[]): T[] {
 type FeedTab = 'trending' | 'following';
 
 const TABS: { id: FeedTab; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+  { id: 'following', label: 'Discover', icon: 'compass' },
   { id: 'trending', label: 'Trending', icon: 'flame' },
-  { id: 'following', label: 'Following', icon: 'people' },
 ];
 
 export default function Feed() {
@@ -248,11 +248,11 @@ export default function Feed() {
       ) : videos.length === 0 ? (
         <View style={styles.center}>
           <Text style={styles.emptyTitle}>
-            {tab === 'following' ? 'No videos from your follows yet' : 'No videos yet'}
+            {tab === 'following' ? 'Nothing to discover yet' : 'No videos yet'}
           </Text>
           <Text style={styles.emptyHint}>
             {tab === 'following'
-              ? 'Follow people whose videos you want to see here.'
+              ? 'Follow creators to discover their videos here.'
               : 'Upload one from the + tab.'}
           </Text>
         </View>
