@@ -2,7 +2,7 @@
   "expo": {
     "name": "Roamerz",
     "slug": "flytok",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "flytok",
@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "com.roamrez.flytok",
-      "versionCode": 3,
+      "versionCode": 4,
       "googleServicesFile": "../firebase/google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#000000",

@@ -1,5 +1,24 @@
 import React from 'react';
-import { Send } from 'lucide-react';
+
+/** Roamerz bird symbol — same glyph as the favicon / ScrollBird. */
+function Bird({ className }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <defs>
+        <linearGradient id="logoBird" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#e0f2fe" />
+          <stop offset="100%" stopColor="#38bdf8" />
+        </linearGradient>
+      </defs>
+      <g transform="translate(16,16) scale(0.78)">
+        <ellipse cx="0" cy="0" rx="7" ry="4" fill="url(#logoBird)" />
+        <path d="M-2 0 C-10 -6 -16 -2 -12 2 C-8 0 -4 2 -2 0 Z" fill="#38bdf8" />
+        <path d="M2 0 C10 -6 16 -2 12 2 C8 0 4 2 2 0 Z" fill="#38bdf8" />
+        <circle cx="4" cy="-1" r="1.1" fill="#fff" />
+      </g>
+    </svg>
+  );
+}
 
 export default function Logo({ size = 'md', showText = true }) {
   const sizes = {
@@ -14,7 +33,7 @@ export default function Logo({ size = 'md', showText = true }) {
     <div className={`flex items-center ${s.container}`}>
       <div className={`${s.ring} rounded-full bg-gradient-to-br from-sky-400 via-blue-500 to-indigo-600 p-[2px] shadow-lg shadow-sky-500/30`}>
         <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center">
-          <Send className={`${s.icon} text-sky-400 transform -rotate-45`} />
+          <Bird className={s.icon} />
         </div>
       </div>
       {showText && (

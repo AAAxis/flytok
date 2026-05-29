@@ -24,14 +24,14 @@ import { colors } from '@/lib/theme';
 
 type Profile = { displayName: string | null; photoURL: string | null };
 
-// Public-web URL template for a single video. The web reference app at
-// flytok-main routes /v/:id to the same video, so this link is stable.
+// Public-web URL template for a single video. The web app routes /v/:id to the
+// same video, so this link is stable. Uses the branded roamerz.io domain.
 function defaultExternalShare(video: VideoDoc): {
   message: string;
   url: string;
   caption: string;
 } {
-  const url = `https://flytok.vercel.app/v/${video.id}`;
+  const url = `https://www.roamerz.io/v/${video.id}`;
   const caption = video.caption?.trim() ?? '';
   const message = caption ? `${caption}\n\n${url}` : url;
   return { message, url, caption };
