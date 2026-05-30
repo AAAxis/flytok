@@ -99,7 +99,17 @@ export default function Inbox() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Inbox</Text>
+        <View style={styles.headerLeft}>
+          <Pressable
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/profile' as never))}
+            hitSlop={12}
+            style={styles.backButton}
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="chevron-back" size={26} color={colors.text} />
+          </Pressable>
+          <Text style={styles.title}>Inbox</Text>
+        </View>
         <Pressable onPress={() => setShowNew(true)} hitSlop={12}>
           <Ionicons name="create-outline" size={24} color={colors.text} />
         </Pressable>
@@ -333,6 +343,8 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 16,
   },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  backButton: { marginLeft: -8, padding: 2 },
   title: { color: colors.text, fontSize: 24, fontWeight: '700' },
   center: { paddingVertical: 32, alignItems: 'center', justifyContent: 'center' },
   list: { paddingHorizontal: 8 },

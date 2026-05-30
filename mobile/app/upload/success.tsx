@@ -94,6 +94,7 @@ export default function UploadSuccess() {
                 style={styles.poster}
                 contentFit="cover"
                 nativeControls={false}
+                allowsVideoFrameAnalysis={false}
               />
             ) : (
               <View style={styles.posterFallback}>

@@ -23,6 +23,15 @@ import { useVideoPlayer, type VideoPlayer } from 'expo-video';
 
 export const POOL_SIZE = 3 as const;
 
+/**
+ * How long the active clip may sit without firing `sourceLoad` (metadata
+ * ready) before we treat it as unplayable. A reachable source loads its
+ * metadata within a couple of seconds even on slow networks — a dead /
+ * 0-byte / still-transcoding URL never fires it and would otherwise leave the
+ * user on a permanently blank card. 10s is comfortably past the happy path.
+ */
+const LOAD_TIMEOUT_MS = 10000;
+
 export type FeedPoolItem = {
   /** Stable id (e.g. Firestore doc id) used to skip no-op replaces. */
   id: string;
@@ -59,7 +68,16 @@ export type PlayerPool = {
  * Hook that owns three persistent `VideoPlayer` instances and rotates which
  * feed item each one is bound to as the active index changes.
  */
-export function usePlayerPool(items: FeedPoolItem[], activeIndex: number): PlayerPool {
+export function usePlayerPool(
+  items: FeedPoolItem[],
+  activeIndex: number,
+  /**
+   * Called with the video id of a slot whose player reports a hard load
+   * error (404 / corrupt / unplayable source). The feed uses this to drop
+   * the item so users never sit on a blank or broken card.
+   */
+  onItemError?: (videoId: string) => void,
+): PlayerPool {
   // Three independent players. They live for the lifetime of the host
   // component; the hook releases them automatically on unmount.
   const playerA = useVideoPlayer(null, configure);
@@ -83,6 +101,13 @@ export function usePlayerPool(items: FeedPoolItem[], activeIndex: number): Playe
     activeIndexRef.current = activeIndex;
   }, [activeIndex]);
 
+  // `onItemError` is read inside the once-wired statusChange listener, so keep
+  // the latest callback in a ref to avoid a stale closure.
+  const onItemErrorRef = useRef(onItemError);
+  useEffect(() => {
+    onItemErrorRef.current = onItemError;
+  }, [onItemError]);
+
   // Wire `sourceLoad` and `statusChange` listeners once per slot. `sourceLoad`
   // is the only reliable signal that AVPlayer / ExoPlayer actually has the
   // asset's metadata loaded — both replaceAsync's promise (cancellation
@@ -95,13 +120,19 @@ export function usePlayerPool(items: FeedPoolItem[], activeIndex: number): Playe
         slot.loaded = true;
       };
       const onStatusChange = (e: { status: string; error?: { message?: string } }) => {
-        if (e.status === 'error' && __DEV__) {
-          // eslint-disable-next-line no-console
-          console.warn('[playerPool] error on slot', {
-            uri: slot.uri,
-            videoId: slot.videoId,
-            message: e.error?.message,
-          });
+        if (e.status === 'error') {
+          if (__DEV__) {
+            // eslint-disable-next-line no-console
+            console.warn('[playerPool] error on slot', {
+              uri: slot.uri,
+              videoId: slot.videoId,
+              message: e.error?.message,
+            });
+          }
+          // Hard load failure — tell the feed to drop this clip so the user
+          // doesn't stare at a blank/broken card.
+          const failedId = slot.videoId;
+          if (failedId) onItemErrorRef.current?.(failedId);
         }
         if (e.status === 'idle') {
           // Item was cleared (replace(null) on Android, or cancellation).
@@ -290,6 +321,25 @@ export function usePlayerPool(items: FeedPoolItem[], activeIndex: number): Playe
     );
     setIndexToPlayer((prev) => (mapsEqual(prev, next) ? prev : next));
   }, [items, activeIndex]);
+
+  // Watchdog for the ACTIVE clip: if its player never fires `sourceLoad`
+  // (metadata ready) within LOAD_TIMEOUT_MS and hasn't errored either, the
+  // source is effectively dead (0-byte / still-transcoding / unreachable).
+  // Drop it so the user isn't stuck on a blank card. `slot.loaded` is a
+  // mutable field, so we re-check it at fire time rather than depending on it.
+  useEffect(() => {
+    const player = indexToPlayer.get(activeIndex);
+    if (!player) return;
+    const slot = slotsRef.current.find((s) => s.player === player);
+    if (!slot || !slot.videoId || slot.loaded) return;
+    const watchedId = slot.videoId;
+    const timer = setTimeout(() => {
+      if (slot.videoId === watchedId && !slot.loaded) {
+        onItemErrorRef.current?.(watchedId);
+      }
+    }, LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [activeIndex, indexToPlayer]);
 
   return useMemo<PlayerPool>(
     () => ({

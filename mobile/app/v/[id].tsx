@@ -64,6 +64,7 @@ export default function DeepLinkVideo() {
         style={StyleSheet.absoluteFill}
         contentFit="cover"
         nativeControls={false}
+        allowsVideoFrameAnalysis={false}
       />
       <SafeAreaView style={styles.overlay} edges={['top', 'bottom']} pointerEvents="box-none">
         <Pressable onPress={() => router.replace('/')} style={styles.close} hitSlop={12}>

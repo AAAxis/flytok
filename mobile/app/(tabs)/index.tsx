@@ -171,6 +171,14 @@ export default function Feed() {
     advanceToNext();
   }, [advanceToNext]);
 
+  // A clip whose player reported a hard load error (404 / corrupt / unplayable)
+  // is removed from the in-memory feed so the user never lands on a blank or
+  // broken card. Removing the active item naturally shifts the next clip up
+  // into the same index — same advance behaviour as a block.
+  const handleItemError = useCallback((videoId: string) => {
+    setVideos((prev) => prev.filter((v) => v.id !== videoId));
+  }, []);
+
   useEffect(() => {
     setLoading(true);
     setActiveIndex(0);
@@ -237,7 +245,7 @@ export default function Feed() {
     [videos, cachedUriById],
   );
 
-  const pool = usePlayerPool(poolItems, activeIndex);
+  const pool = usePlayerPool(poolItems, activeIndex, handleItemError);
 
   return (
     <View style={styles.root} onLayout={onContainerLayout}>

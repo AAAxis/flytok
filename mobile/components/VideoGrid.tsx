@@ -45,7 +45,13 @@ function GridTile({ video, onPress }: { video: VideoDoc; onPress?: () => void })
 
   return (
     <Pressable onPress={onPress} style={styles.tile}>
-      <VideoView player={player} style={styles.tileVideo} contentFit="cover" nativeControls={false} />
+      <VideoView
+        player={player}
+        style={styles.tileVideo}
+        contentFit="cover"
+        nativeControls={false}
+        allowsVideoFrameAnalysis={false}
+      />
       {video.caption ? (
         <View style={styles.tileOverlay}>
           <Text numberOfLines={1} style={styles.tileCaption}>

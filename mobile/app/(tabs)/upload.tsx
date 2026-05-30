@@ -307,6 +307,7 @@ export default function Upload() {
                   style={styles.video}
                   contentFit="cover"
                   nativeControls={false}
+                  allowsVideoFrameAnalysis={false}
                 />
                 <Pressable
                   onPress={() => setUri(null)}

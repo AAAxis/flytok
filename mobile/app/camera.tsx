@@ -293,6 +293,7 @@ function ReviewScreen({
                   style={styles.thumbVideo}
                   contentFit="cover"
                   nativeControls={false}
+                  allowsVideoFrameAnalysis={false}
                 />
               </View>
             </View>

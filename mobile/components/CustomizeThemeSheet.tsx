@@ -176,46 +176,6 @@ export function CustomizeThemeSheet({ visible, onClose }: Props) {
           </View>
         </Section>
 
-        <Section label="Background image">
-          <View style={styles.bgImageRow}>
-            <Pressable
-              onPress={pickBackgroundImage}
-              disabled={uploading}
-              style={styles.bgUpload}
-            >
-              {theme.backgroundImageURL ? (
-                <Image source={{ uri: theme.backgroundImageURL }} style={styles.bgPreview} />
-              ) : (
-                <View style={[styles.bgPreview, styles.bgEmpty]}>
-                  <Ionicons name="image-outline" size={28} color={colors.textDim} />
-                </View>
-              )}
-              {uploading ? (
-                <View style={styles.bgUploading}>
-                  <ActivityIndicator color={colors.bg} />
-                </View>
-              ) : null}
-            </Pressable>
-            <View style={styles.bgActions}>
-              <Pressable
-                onPress={pickBackgroundImage}
-                disabled={uploading}
-                style={styles.bgActionBtn}
-              >
-                <Ionicons name="cloud-upload-outline" size={18} color={colors.text} />
-                <Text style={styles.bgActionText}>
-                  {theme.backgroundImageURL ? 'Replace' : 'Upload image'}
-                </Text>
-              </Pressable>
-              {theme.backgroundImageURL ? (
-                <Pressable onPress={removeBackgroundImage} style={styles.bgActionBtn}>
-                  <Ionicons name="trash-outline" size={18} color={colors.danger} />
-                  <Text style={[styles.bgActionText, { color: colors.danger }]}>Remove</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          </View>
-        </Section>
 
         <Section label="Accent color">
           <View style={styles.swatchGrid}>

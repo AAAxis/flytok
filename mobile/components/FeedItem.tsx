@@ -221,6 +221,7 @@ export function FeedItem({
             style={[styles.video, { height }]}
             contentFit="cover"
             nativeControls={false}
+            allowsVideoFrameAnalysis={false}
           />
         ) : (
           // Out of the active ±1 window: render a black placeholder. We

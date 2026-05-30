@@ -4,7 +4,6 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Image,
-  ImageBackground,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -36,9 +35,7 @@ import { dicebearURL } from '@/lib/avatars';
 
 type Tab = 'mine' | 'map';
 
-const COVER_VISIBLE = 200;
 const AVATAR_SIZE = 96;
-const AVATAR_OVERLAP = AVATAR_SIZE / 2;
 
 export default function Profile() {
   const router = useRouter();
@@ -152,19 +149,7 @@ export default function Profile() {
           </View>
         ) : (
           <>
-            <Cover
-              backgroundColor={themed.headerBackgroundColor}
-              backgroundImageURL={themed.headerBackgroundImageURL}
-              topInset={insets.top}
-            />
-
-            <View
-              style={[
-                styles.topBarOverlay,
-                { top: insets.top + 8 },
-              ]}
-              pointerEvents="box-none"
-            >
+            <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
               <Pressable
                 onPress={() => setShowSettings(true)}
                 hitSlop={10}
@@ -210,9 +195,11 @@ export default function Profile() {
             </Pressable>
 
             <View style={styles.identity}>
-              <Text style={styles.displayName} numberOfLines={1}>
-                {displayName?.trim() || `@${topHandle}`}
-              </Text>
+              {displayName?.trim() ? (
+                <Text style={styles.displayName} numberOfLines={1}>
+                  {displayName.trim()}
+                </Text>
+              ) : null}
               {bio ? (
                 <Text style={styles.bio} numberOfLines={2}>
                   {bio}
@@ -322,30 +309,6 @@ export default function Profile() {
   );
 }
 
-function Cover({
-  backgroundColor,
-  backgroundImageURL,
-  topInset,
-}: {
-  backgroundColor: string;
-  backgroundImageURL: string | null;
-  topInset: number;
-}) {
-  const height = COVER_VISIBLE + topInset;
-  if (backgroundImageURL) {
-    return (
-      <ImageBackground
-        source={{ uri: backgroundImageURL }}
-        style={[styles.cover, { height }]}
-        imageStyle={styles.coverImage}
-      >
-        <View style={styles.coverScrim} />
-      </ImageBackground>
-    );
-  }
-  return <View style={[styles.cover, { height, backgroundColor }]} />;
-}
-
 function Stat({
   label,
   value,
@@ -394,23 +357,12 @@ const styles = StyleSheet.create({
   content: {},
   loading: { alignItems: 'center' },
 
-  cover: {
-    width: '100%',
-    overflow: 'hidden',
-  },
-  coverImage: { resizeMode: 'cover' },
-  coverScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.18)',
-  },
-
-  topBarOverlay: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   handleCell: {
     flex: 1,
@@ -447,7 +399,7 @@ const styles = StyleSheet.create({
 
   avatarWrap: {
     alignSelf: 'center',
-    marginTop: -AVATAR_OVERLAP,
+    marginTop: 16,
     position: 'relative',
   },
   avatarImage: {

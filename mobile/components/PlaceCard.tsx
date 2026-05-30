@@ -110,6 +110,7 @@ function PlaceThumbnail({
         style={StyleSheet.absoluteFill}
         contentFit="cover"
         nativeControls={false}
+        allowsVideoFrameAnalysis={false}
       />
       {video.caption ? (
         <View style={styles.thumbOverlay}>

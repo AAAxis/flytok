@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -33,9 +32,7 @@ import { colors } from '@/lib/theme';
 import { applyTheme, useUserTheme } from '@/lib/theme/userTheme';
 import { dicebearURL } from '@/lib/avatars';
 
-const COVER_VISIBLE = 200;
 const AVATAR_SIZE = 96;
-const AVATAR_OVERLAP = AVATAR_SIZE / 2;
 
 export default function UserProfile() {
   const { uid } = useLocalSearchParams<{ uid: string }>();
@@ -146,20 +143,13 @@ export default function UserProfile() {
   // Same rule as own profile: top-bar handle is the @username, NEVER the
   // displayName. Falls back to a uid stub for legacy accounts.
   const topHandle = profile?.username ?? `user_${uid.slice(0, 6)}`;
-  const nameOnCard = profile?.displayName?.trim() || `@${topHandle}`;
 
   return (
     <View style={styles.root}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 60 }]}>
-        <Cover
-          backgroundColor={themed.headerBackgroundColor}
-          backgroundImageURL={themed.headerBackgroundImageURL}
-          topInset={insets.top}
-        />
-
-        <View style={[styles.topBarOverlay, { top: insets.top + 8 }]} pointerEvents="box-none">
+        <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
           <Pressable
             onPress={() => router.back()}
             hitSlop={10}
@@ -187,17 +177,19 @@ export default function UserProfile() {
         </View>
 
         {avatarUri ? (
-          <Image source={{ uri: avatarUri }} style={[styles.avatarImage, styles.avatarOverlap]} />
+          <Image source={{ uri: avatarUri }} style={[styles.avatarImage, styles.avatarTop]} />
         ) : (
-          <View style={[styles.avatarPlaceholder, styles.avatarOverlap]}>
+          <View style={[styles.avatarPlaceholder, styles.avatarTop]}>
             <Ionicons name="person" size={36} color={colors.text} />
           </View>
         )}
 
         <View style={styles.identity}>
-          <Text style={styles.displayName} numberOfLines={1}>
-            {nameOnCard}
-          </Text>
+          {profile?.displayName?.trim() ? (
+            <Text style={styles.displayName} numberOfLines={1}>
+              {profile.displayName.trim()}
+            </Text>
+          ) : null}
           {profile?.bio ? (
             <Text style={styles.bio} numberOfLines={2}>
               {profile.bio}
@@ -319,30 +311,6 @@ export default function UserProfile() {
   );
 }
 
-function Cover({
-  backgroundColor,
-  backgroundImageURL,
-  topInset,
-}: {
-  backgroundColor: string;
-  backgroundImageURL: string | null;
-  topInset: number;
-}) {
-  const height = COVER_VISIBLE + topInset;
-  if (backgroundImageURL) {
-    return (
-      <ImageBackground
-        source={{ uri: backgroundImageURL }}
-        style={[styles.cover, { height }]}
-        imageStyle={styles.coverImage}
-      >
-        <View style={styles.coverScrim} />
-      </ImageBackground>
-    );
-  }
-  return <View style={[styles.cover, { height, backgroundColor }]} />;
-}
-
 function Stat({
   label,
   value,
@@ -381,20 +349,12 @@ const styles = StyleSheet.create({
   empty: { color: colors.textDim, fontSize: 13 },
   content: {},
 
-  cover: { width: '100%', overflow: 'hidden' },
-  coverImage: { resizeMode: 'cover' },
-  coverScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.18)',
-  },
-
-  topBarOverlay: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   iconBtn: {
     width: 36,
@@ -413,7 +373,7 @@ const styles = StyleSheet.create({
   },
   handlePillText: { color: '#fff', fontSize: 14, fontWeight: '600' },
 
-  avatarOverlap: { alignSelf: 'center', marginTop: -AVATAR_OVERLAP },
+  avatarTop: { alignSelf: 'center', marginTop: 16 },
   avatarImage: {
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
