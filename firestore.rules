@@ -237,6 +237,20 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // === campaigns/{campaignId} ===
+    // Trip-promotion campaigns. Any signed-in user can read (the feed surfaces
+    // active promoted campaigns); only the owner creates/edits their own. The
+    // budget debit happens in the same client transaction against the wallet
+    // field on the user doc. NOTE: spend tracking (spentCents) and wallet
+    // credit should move server-side (RevenueCat webhook → Cloud Function).
+    match /campaigns/{campaignId} {
+      allow read:   if signedIn();
+      allow create: if signedIn()
+                    && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isAdmin()
+                    || (signedIn() && resource.data.ownerId == request.auth.uid);
+    }
+
     // Default deny — any collection not matched above is forbidden.
   }
 }

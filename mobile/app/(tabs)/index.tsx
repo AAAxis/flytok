@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import {
   ActivityIndicator,
@@ -12,7 +12,7 @@ import {
   View,
   ViewToken,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import {
@@ -23,7 +23,6 @@ import {
   type VideoDoc,
 } from '@/lib/firestore';
 import { FeedItem } from '@/components/FeedItem';
-import { AiAssistantSheet } from '@/components/AiAssistantSheet';
 import { getCachedVideoPath, prefetchVideos } from '@/lib/videoCache';
 import { usePlayerPool, type FeedPoolItem } from '@/lib/feed/usePlayerPool';
 import { colors } from '@/lib/theme';
@@ -51,25 +50,23 @@ function shuffleFeed<T>(input: readonly T[]): T[] {
 
 type FeedTab = 'trending' | 'following';
 
-const TABS: { id: FeedTab; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
-  { id: 'following', label: 'Discover', icon: 'compass' },
-  { id: 'trending', label: 'Trending', icon: 'flame' },
+const TABS: { id: FeedTab; label: string }[] = [
+  { id: 'following', label: 'Discover' },
+  { id: 'trending', label: 'Most popular' },
 ];
 
 export default function Feed() {
   const me = auth().currentUser;
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const [tab, setTab] = useState<FeedTab>('trending');
-  const [showAi, setShowAi] = useState(false);
   const [videos, setVideos] = useState<VideoDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(FALLBACK_HEIGHT);
-  // Top overlays must clear the status bar / camera cutout on Android
-  // edge-to-edge devices and the notch on iOS.
-  const topOverlayOffset = insets.top + TOP_OVERLAY_GAP;
+  // The shared AppHeader already clears the status bar, so feed overlays sit
+  // just inside the top of the video area.
+  const topOverlayOffset = TOP_OVERLAY_GAP;
 
   function onContainerLayout(e: LayoutChangeEvent) {
     const h = e.nativeEvent.layout.height;
@@ -308,49 +305,50 @@ export default function Feed() {
         />
       )}
 
-      <View style={[styles.topTabs, { top: topOverlayOffset }]} pointerEvents="box-none">
-        {TABS.map((t) => {
+      {/* Subtle top scrim so the tabs stay legible over bright video */}
+      <LinearGradient
+        colors={['rgba(0,0,0,0.5)', 'transparent']}
+        style={[styles.topScrim, { height: 80 }]}
+        pointerEvents="none"
+      />
+
+      {/* Discover | Most popular tabs, centered */}
+      <View style={[styles.topTabs, { top: topOverlayOffset + 4 }]} pointerEvents="box-none">
+        {TABS.map((t, i) => {
           const active = tab === t.id;
           return (
-            <Pressable
-              key={t.id}
-              onPress={() => setTab(t.id)}
-              hitSlop={6}
-              style={styles.topTabButton}
-            >
-              <Ionicons
-                name={t.icon}
-                size={14}
-                color={active ? '#fff' : 'rgba(255,255,255,0.7)'}
-              />
-              <Text style={[styles.topTabLabel, active && styles.topTabLabelActive]}>
-                {t.label}
-              </Text>
-              {active && <View style={styles.topTabUnderline} />}
-            </Pressable>
+            <Fragment key={t.id}>
+              {i > 0 && <Text style={styles.tabSep}>|</Text>}
+              <Pressable onPress={() => setTab(t.id)} hitSlop={6} style={styles.topTabButton}>
+                <Text style={[styles.topTabLabel, active && styles.topTabLabelActive]}>
+                  {t.label}
+                </Text>
+                {active && <View style={styles.topTabUnderline} />}
+              </Pressable>
+            </Fragment>
           );
         })}
       </View>
 
+      {/* Search — rounded-square, top-right (matches the trending button) */}
       <Pressable
         onPress={() => router.push('/search' as never)}
         hitSlop={8}
-        style={[styles.searchButton, { top: topOverlayOffset }]}
-        accessibilityLabel="Open search"
+        style={[styles.cornerFab, styles.searchFab, { top: topOverlayOffset }]}
+        accessibilityLabel="Search and travel assistant"
       >
-        <Ionicons name="search" size={18} color="#fff" />
+        <Ionicons name="search" size={20} color="#fff" />
       </Pressable>
 
+      {/* Trending shortcut — flame, stacked under search */}
       <Pressable
-        onPress={() => setShowAi(true)}
+        onPress={() => router.push('/trending' as never)}
         hitSlop={8}
-        style={[styles.aiButton, { top: topOverlayOffset }]}
-        accessibilityLabel="Open travel assistant"
+        style={[styles.cornerFab, styles.trendingFab, { top: topOverlayOffset + 52 }]}
+        accessibilityLabel="Trending places"
       >
-        <Ionicons name="sparkles" size={18} color="#fff" />
+        <Ionicons name="flame" size={20} color="#fff" />
       </Pressable>
-
-      <AiAssistantSheet visible={showAi} onClose={() => setShowAi(false)} />
     </View>
   );
 }
@@ -358,6 +356,7 @@ export default function Feed() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
   list: { backgroundColor: '#000' },
+  topScrim: { position: 'absolute', top: 0, left: 0, right: 0 },
   center: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -372,46 +371,47 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 22,
-    paddingVertical: 6,
+    gap: 12,
   },
-  topTabButton: { alignItems: 'center', flexDirection: 'row', gap: 6, paddingVertical: 4 },
+  topTabButton: { alignItems: 'center', paddingVertical: 4 },
+  tabSep: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 15,
+    fontWeight: '300',
+    marginTop: 2,
+  },
   topTabLabel: {
     color: 'rgba(255,255,255,0.7)',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     textShadowColor: 'rgba(0,0,0,0.6)',
     textShadowRadius: 4,
   },
-  topTabLabelActive: { color: '#fff' },
+  topTabLabelActive: { color: '#fff', fontWeight: '700' },
   topTabUnderline: {
     position: 'absolute',
     bottom: -4,
-    left: '20%',
-    right: '20%',
+    left: '15%',
+    right: '15%',
     height: 2,
     backgroundColor: '#fff',
     borderRadius: 1,
   },
-  aiButton: {
+  cornerFab: {
     position: 'absolute',
-    right: 16,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    right: 14,
+    width: 42,
+    height: 42,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
-  searchButton: {
-    position: 'absolute',
-    left: 16,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  searchFab: { backgroundColor: 'rgba(0,0,0,0.4)' },
+  trendingFab: { backgroundColor: '#f97316' },
 });

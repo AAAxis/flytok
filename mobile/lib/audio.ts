@@ -52,6 +52,22 @@ export type AudioSelection =
 const TRACKS_COLLECTION = 'tracks';
 const MAX_USER_AUDIO_BYTES = 15 * 1024 * 1024; // matches storage.rules
 
+/**
+ * Built-in starter tracks. The curated `tracks/*` Firestore collection is the
+ * source of truth, but until it's seeded we ship five basic tracks so the
+ * music picker — and the feed's music row — work out of the box.
+ * `loadTracks()` falls back to these whenever the collection is empty or
+ * unreachable. The download URLs point at stable, freely-usable demo audio so
+ * tap-to-preview works without any storage setup.
+ */
+export const BUILTIN_TRACKS: Track[] = [
+  { id: 'builtin-sunset-drive', title: 'Sunset Drive', artist: 'Roamerz Audio', durationSec: 184, storagePath: '', license: 'cc0', category: 'Chill', downloadURL: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
+  { id: 'builtin-coastal-roads', title: 'Coastal Roads', artist: 'Roamerz Audio', durationSec: 201, storagePath: '', license: 'cc0', category: 'Upbeat', downloadURL: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
+  { id: 'builtin-night-market', title: 'Night Market', artist: 'Roamerz Audio', durationSec: 176, storagePath: '', license: 'cc0', category: 'World', downloadURL: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' },
+  { id: 'builtin-mountain-air', title: 'Mountain Air', artist: 'Roamerz Audio', durationSec: 213, storagePath: '', license: 'cc0', category: 'Cinematic', downloadURL: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' },
+  { id: 'builtin-island-time', title: 'Island Time', artist: 'Roamerz Audio', durationSec: 168, storagePath: '', license: 'cc0', category: 'Tropical', downloadURL: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3' },
+];
+
 export function tracksCol() {
   return firestore().collection(TRACKS_COLLECTION);
 }
@@ -59,18 +75,25 @@ export function tracksCol() {
 /**
  * Loads every curated track. Small collection (~20 docs) — fetching all
  * client-side keeps the picker snappy and lets us filter by category in JS.
- * Caller can pass `category` to filter server-side once we add categories.
+ * Falls back to {@link BUILTIN_TRACKS} when the collection is empty or the
+ * query fails, so the picker always has something to show.
  */
 export async function loadTracks(): Promise<Track[]> {
   try {
     const snap = await tracksCol().orderBy('title').get();
+    if (snap.empty) return BUILTIN_TRACKS;
     return Promise.all(snap.docs.map(toTrack));
   } catch (err) {
     console.warn('[audio] ordered tracks query failed, falling back:', err);
-    const snap = await tracksCol().limit(100).get();
-    const tracks = await Promise.all(snap.docs.map(toTrack));
-    tracks.sort((a, b) => a.title.localeCompare(b.title));
-    return tracks;
+    try {
+      const snap = await tracksCol().limit(100).get();
+      if (snap.empty) return BUILTIN_TRACKS;
+      const tracks = await Promise.all(snap.docs.map(toTrack));
+      tracks.sort((a, b) => a.title.localeCompare(b.title));
+      return tracks;
+    } catch {
+      return BUILTIN_TRACKS;
+    }
   }
 }
 

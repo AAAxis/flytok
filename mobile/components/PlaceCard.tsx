@@ -36,7 +36,15 @@ export function PlaceCard({ visible, onClose, placeName, videos }: Props) {
   }
 
   return (
-    <AppBottomSheet visible={visible} onClose={onClose} snapPoints={['45%']}>
+    <AppBottomSheet
+      visible={visible}
+      onClose={onClose}
+      snapPoints={['45%']}
+      // gorhom v4's content-pan gesture swallows taps on the inner Pressables
+      // (header / thumbnails), so disable it — drag-to-dismiss still works via
+      // the handle and the backdrop.
+      enableContentPanningGesture={false}
+    >
       {/*
        * Gate the inner content on `visible` so the up-to-3 `useVideoPlayer`
        * instances in PlaceThumbnail don't run silently while the sheet is
@@ -135,6 +143,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  headerPressed: { opacity: 0.6 },
   iconWrap: {
     width: 36,
     height: 36,

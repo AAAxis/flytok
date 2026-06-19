@@ -13,6 +13,7 @@ import {
   requestTrackingPermissionsAsync,
 } from 'expo-tracking-transparency';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import { configurePurchases, setPurchasesUser } from '@/lib/purchases';
 import { setUserProperty } from '@/lib/analytics';
 import { setupBackgroundMessageHandler } from '@/lib/messaging';
 import { useHasSeenOnboarding } from '@/lib/onboarding';
@@ -138,6 +139,15 @@ function Gate() {
   // bounce back to /onboarding when "Get started" / "Skip" routes to
   // /login.
   const seen = useHasSeenOnboarding();
+
+  // Configure RevenueCat once, then keep its app-user-id in sync with auth so
+  // top-up purchases are attributed to the signed-in Firebase uid.
+  useEffect(() => {
+    configurePurchases();
+  }, []);
+  useEffect(() => {
+    setPurchasesUser(user?.uid ?? null);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (loading || seen === null) return;

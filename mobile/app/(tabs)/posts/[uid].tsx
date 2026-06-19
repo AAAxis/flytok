@@ -9,7 +9,7 @@ import {
   View,
   ViewToken,
 } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { filterPlayable, getMyVideos, getSavedVideoIds, getVideosByIds, type VideoDoc } from '@/lib/firestore';
 import { FeedItem } from '@/components/FeedItem';
 import { usePlayerPool, type FeedPoolItem } from '@/lib/feed/usePlayerPool';
@@ -123,18 +123,6 @@ export default function UserPostsFeed() {
 
   return (
     <View style={styles.root} onLayout={onContainerLayout}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerTransparent: true,
-          headerTitle: '',
-          headerStyle: { backgroundColor: 'transparent' },
-          headerTintColor: '#fff',
-          headerBackTitle: '',
-          headerBackButtonDisplayMode: 'minimal',
-        }}
-      />
-
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />

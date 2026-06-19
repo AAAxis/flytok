@@ -105,6 +105,28 @@ export async function searchPlaces(
   }
 }
 
+/**
+ * Number of videos ("routes") recorded at a place, read from the denormalised
+ * `videoCount` on the places collection. Best-effort: returns 0 if the place
+ * isn't tracked yet or the read fails.
+ */
+export async function getPlaceVideoCount(label: string): Promise<number> {
+  const q = label.trim().toLowerCase();
+  if (!q) return 0;
+  try {
+    const snap = await firestore()
+      .collection('places')
+      .where('label_lower', '==', q)
+      .limit(1)
+      .get();
+    if (snap.empty) return 0;
+    return (snap.docs[0].data().videoCount as number | undefined) ?? 0;
+  } catch (err) {
+    console.warn('[places] videoCount read failed:', err);
+    return 0;
+  }
+}
+
 export type TrendingPlace = {
   slug: string;
   label: string;

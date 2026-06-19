@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -38,10 +39,22 @@ export function VideoGrid({
 }
 
 function GridTile({ video, onPress }: { video: VideoDoc; onPress?: () => void }) {
+  const [failed, setFailed] = useState(false);
   const player = useVideoPlayer(video.downloadURL, (p) => {
     p.muted = true;
     p.loop = false;
   });
+
+  // Hide tiles whose source 404s / is corrupt — otherwise they render as a
+  // black square with a broken-play glyph in the middle of the grid.
+  useEffect(() => {
+    const sub = player.addListener('statusChange', ({ status, error }) => {
+      if (status === 'error' || error) setFailed(true);
+    });
+    return () => sub.remove();
+  }, [player]);
+
+  if (failed) return null;
 
   return (
     <Pressable onPress={onPress} style={styles.tile}>

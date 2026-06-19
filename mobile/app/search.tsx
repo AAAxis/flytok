@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/lib/theme';
 import { searchUsersByHandle } from '@/lib/users';
@@ -25,6 +26,7 @@ import {
   type SearchTab,
   type SearchResults,
 } from '@/components/search/ResultsTabs';
+import { AiAssistantSheet } from '@/components/AiAssistantSheet';
 
 const DEBOUNCE_MS = 300;
 const MIN_QUERY_CHARS = 2;
@@ -55,6 +57,7 @@ export default function SearchScreen() {
   const [tab, setTab] = useState<SearchTab>('all');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchResults>(EMPTY_RESULTS);
+  const [showAi, setShowAi] = useState(false);
 
   // Autofocus on mount; the Stack header is hidden so this is the first
   // interactive element.
@@ -121,27 +124,42 @@ export default function SearchScreen() {
           style={styles.backBtn}
           accessibilityLabel="Back"
         >
-          <Ionicons name="arrow-back" size={22} color={colors.text} />
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
-        <View style={styles.searchWrap}>
-          <Ionicons name="search" size={16} color={colors.textDim} />
-          <TextInput
-            ref={inputRef}
-            style={styles.input}
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search users, videos, hashtags…"
-            placeholderTextColor={colors.textDim}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-          />
-          {query.length > 0 ? (
-            <Pressable onPress={() => setQuery('')} hitSlop={6}>
-              <Ionicons name="close-circle" size={16} color={colors.textDim} />
-            </Pressable>
-          ) : null}
-        </View>
+        <LinearGradient
+          colors={['#2563eb', '#7c3aed']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.searchPanel}
+        >
+          <View style={styles.searchPill}>
+            <Ionicons name="search" size={16} color="rgba(255,255,255,0.85)" />
+            <TextInput
+              ref={inputRef}
+              style={styles.pillInput}
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Where do you want to explore?"
+              placeholderTextColor="rgba(255,255,255,0.7)"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+            {query.length > 0 ? (
+              <Pressable onPress={() => setQuery('')} hitSlop={6}>
+                <Ionicons name="close-circle" size={16} color="rgba(255,255,255,0.85)" />
+              </Pressable>
+            ) : null}
+          </View>
+          <Pressable
+            onPress={() => setShowAi(true)}
+            hitSlop={8}
+            style={styles.panelBtn}
+            accessibilityLabel="Ask the travel assistant"
+          >
+            <Ionicons name="sparkles" size={18} color="#fff" />
+          </Pressable>
+        </LinearGradient>
       </View>
 
       {isQuerying ? (
@@ -163,6 +181,8 @@ export default function SearchScreen() {
           <TrendingPlaces />
         </ScrollView>
       )}
+
+      <AiAssistantSheet visible={showAi} onClose={() => setShowAi(false)} />
     </View>
   );
 }
@@ -185,23 +205,44 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 18,
   },
-  searchWrap: {
+  aiBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  searchPanel: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderRadius: 16,
+    padding: 6,
+    paddingLeft: 12,
   },
-  input: {
+  searchPill: {
     flex: 1,
-    color: colors.text,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pillInput: {
+    flex: 1,
+    color: '#fff',
     fontSize: 15,
     padding: 0,
+  },
+  panelBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   empty: { paddingTop: 16 },
 });

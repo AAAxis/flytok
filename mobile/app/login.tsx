@@ -1,15 +1,19 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Path } from 'react-native-svg';
 import auth from '@react-native-firebase/auth';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -29,6 +33,7 @@ export default function Login() {
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Provider | null>(null);
 
@@ -96,116 +101,164 @@ export default function Login() {
   }
 
   const anyBusy = busy !== null;
+  const emailValid = !!email.trim();
+  const canContinue = showPassword ? emailValid && !!password : emailValid;
+  const primaryDisabled = anyBusy || !canContinue;
+  const verb = mode === 'signin' ? 'Sign in' : 'Sign up';
+
+  function handlePrimary() {
+    // Match the design: only email is shown first; reveal password on first tap.
+    if (!showPassword) {
+      setError(null);
+      setShowPassword(true);
+      return;
+    }
+    handleEmail();
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
+      {/* Black (top) → grey (bottom) background gradient, matching the design. */}
+      <LinearGradient
+        colors={['#000000', '#161619', '#3a3a40']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.flex}
       >
-        <View style={styles.container}>
-          <View style={styles.logoRow}>
-            <Text style={styles.logoFly}>Roam</Text>
-            <Text style={styles.logoTok}>erz</Text>
-          </View>
-          <Text style={styles.tagline}>Travel videos for the curious.</Text>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Logo */}
+          <Image
+            source={require('@/assets/images/logo-bird.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
 
-          <View style={styles.card}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              autoComplete="email"
-              keyboardType="email-address"
-              textContentType="emailAddress"
-              placeholderTextColor={colors.textFaint}
-              editable={!anyBusy}
-              style={styles.input}
-            />
+          {/* Email */}
+          <Text style={styles.label}>Email</Text>
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            autoComplete="email"
+            keyboardType="email-address"
+            textContentType="emailAddress"
+            placeholder="you@example.com"
+            placeholderTextColor={colors.textFaint}
+            editable={!anyBusy}
+            style={styles.input}
+          />
 
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoComplete="current-password"
-              textContentType="password"
-              placeholderTextColor={colors.textFaint}
-              editable={!anyBusy}
-              style={styles.input}
-            />
+          {/* Password — revealed after the first tap, mirroring the design's email-only start */}
+          {showPassword && (
+            <>
+              <Text style={styles.label}>Password</Text>
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoFocus
+                autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                textContentType={mode === 'signin' ? 'password' : 'newPassword'}
+                placeholder="••••••••"
+                placeholderTextColor={colors.textFaint}
+                editable={!anyBusy}
+                onSubmitEditing={handleEmail}
+                style={styles.input}
+              />
+            </>
+          )}
 
-            <Pressable
-              onPress={handleEmail}
-              disabled={anyBusy || !email || !password}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                (anyBusy || !email || !password) && styles.buttonDisabled,
-                pressed && styles.primaryButtonPressed,
-              ]}
+          {/* Sign in (gradient) */}
+          <Pressable
+            onPress={handlePrimary}
+            disabled={primaryDisabled}
+            style={({ pressed }) => [styles.primaryWrap, pressed && styles.pressed, primaryDisabled && styles.disabled]}
+          >
+            <LinearGradient
+              // Matches the Figma button: bright pale-blue → medium sky-blue, left to right.
+              colors={['#8ed7fa', '#48b0ef', '#2f9fe6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.primaryButton}
             >
               {busy === 'email' ? (
-                <ActivityIndicator color={colors.bg} />
+                <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.primaryButtonText}>
-                  {mode === 'signin' ? 'Sign in' : 'Create account'}
-                </Text>
+                <Text style={styles.primaryButtonText}>{verb}</Text>
               )}
-            </Pressable>
+            </LinearGradient>
+          </Pressable>
 
-            <Pressable
-              onPress={() => {
-                setError(null);
-                setMode((m) => (m === 'signin' ? 'signup' : 'signin'));
-              }}
-              hitSlop={8}
-              style={styles.modeToggle}
-            >
-              <Text style={styles.modeToggleText}>
-                {mode === 'signin' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
-              </Text>
-            </Pressable>
-
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerLabel}>or</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <Pressable
-              onPress={handleGoogle}
-              disabled={anyBusy}
-              style={({ pressed }) => [
-                styles.socialButton,
-                anyBusy && styles.buttonDisabled,
-                pressed && styles.socialButtonPressed,
-              ]}
-            >
-              {busy === 'google' ? (
-                <ActivityIndicator color={colors.text} />
-              ) : (
-                <Text style={styles.socialButtonText}>Continue with Google</Text>
-              )}
-            </Pressable>
-
-            {Platform.OS === 'ios' && (
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-                cornerRadius={8}
-                style={styles.appleButton}
-                onPress={handleApple}
-              />
-            )}
-
-            {error && <Text style={styles.error}>{error}</Text>}
+          {/* OR divider */}
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerLabel}>OR</Text>
+            <View style={styles.dividerLine} />
           </View>
 
+          {/* Google */}
+          <Pressable
+            onPress={handleGoogle}
+            disabled={anyBusy}
+            style={({ pressed }) => [styles.socialButton, anyBusy && styles.disabled, pressed && styles.socialPressed]}
+          >
+            {busy === 'google' ? (
+              <ActivityIndicator color={colors.text} />
+            ) : (
+              <>
+                <GoogleMark />
+                <Text style={styles.socialButtonText}>{verb} with Google</Text>
+              </>
+            )}
+          </Pressable>
+
+          {/* Apple */}
+          {Platform.OS === 'ios' && (
+            <Pressable
+              onPress={handleApple}
+              disabled={anyBusy}
+              style={({ pressed }) => [styles.socialButton, anyBusy && styles.disabled, pressed && styles.socialPressed]}
+            >
+              {busy === 'apple' ? (
+                <ActivityIndicator color={colors.text} />
+              ) : (
+                <>
+                  <AppleMark />
+                  <Text style={styles.socialButtonText}>{verb} with Apple</Text>
+                </>
+              )}
+            </Pressable>
+          )}
+
+          {/* Toggle sign in / sign up */}
+          <Pressable
+            onPress={() => {
+              setError(null);
+              setMode((m) => (m === 'signin' ? 'signup' : 'signin'));
+            }}
+            hitSlop={8}
+            style={styles.modeToggle}
+          >
+            <Text style={styles.modeToggleText}>
+              {mode === 'signin' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+            </Text>
+          </Pressable>
+
+          {error && <Text style={styles.error}>{error}</Text>}
+
+          {/* Legal */}
           <Text style={styles.legal}>
-            By continuing you agree to our{' '}
+            By continuing, you agree to the{' '}
             <Text style={styles.legalLink} onPress={() => router.push('/legal/terms' as never)}>
-              Terms
+              Terms of use
             </Text>
             {' '}and{' '}
             <Text style={styles.legalLink} onPress={() => router.push('/legal/privacy' as never)}>
@@ -213,70 +266,78 @@ export default function Login() {
             </Text>
             .
           </Text>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
+/** Official multicolour Google "G" — transparent vector, no chip. */
+function GoogleMark() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 48 48">
+      <Path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z" />
+      <Path fill="#34A853" d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z" />
+      <Path fill="#FBBC05" d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24s.85 6.91 2.34 9.88l7.35-5.7z" />
+      <Path fill="#EA4335" d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z" />
+    </Svg>
+  );
+}
+
+/** Apple's monochrome white glyph — transparent vector. */
+function AppleMark() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24">
+      <Path
+        fill="#fff"
+        d="M16.365 1.43c0 1.14-.42 2.22-1.18 3.04-.84.9-2.2 1.6-3.36 1.5-.14-1.1.43-2.26 1.16-3.03.83-.88 2.27-1.54 3.38-1.51zM20.5 17.1c-.6 1.38-.89 1.99-1.66 3.21-1.08 1.7-2.6 3.82-4.48 3.84-1.67.02-2.1-1.09-4.37-1.08-2.27.01-2.74 1.1-4.41 1.08-1.88-.02-3.32-1.93-4.4-3.63C-1.3 16.4-1.6 10.86.83 7.92 1.95 6.55 3.7 5.68 5.3 5.68c1.66 0 2.7 1.09 4.07 1.09 1.33 0 2.14-1.09 4.06-1.09 1.45 0 2.99.79 4.08 2.15-3.59 1.96-3 7.08.99 9.27z"
+      />
+    </Svg>
+  );
+}
+
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  // Pure black so the kingfisher logo (black-backed PNG) blends seamlessly.
+  safe: { flex: 1, backgroundColor: '#000' },
   flex: { flex: 1 },
-  container: { flex: 1, padding: 24, justifyContent: 'center' },
-  logoRow: { flexDirection: 'row', alignItems: 'baseline', alignSelf: 'center' },
-  logoFly: { fontSize: 40, fontWeight: '800', color: colors.text },
-  logoTok: { fontSize: 40, fontWeight: '800', color: colors.accent },
-  tagline: { color: colors.textDim, fontSize: 12, alignSelf: 'center', marginTop: 4, marginBottom: 32 },
-  card: {
+  scroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 40 },
+  logo: { width: 96, height: 96, alignSelf: 'center', marginBottom: 40 },
+  label: { color: colors.textMuted, fontSize: 13, marginBottom: 8, marginTop: 14 },
+  input: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 12,
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    color: colors.text,
+    fontSize: 15,
   },
-  label: { color: colors.textMuted, fontSize: 12, marginBottom: 6, marginTop: 12 },
-  input: {
-    backgroundColor: colors.bg,
+  primaryWrap: { marginTop: 24, borderRadius: 12, overflow: 'hidden' },
+  primaryButton: { height: 50, alignItems: 'center', justifyContent: 'center' },
+  primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  pressed: { opacity: 0.9 },
+  disabled: { opacity: 0.5 },
+  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 22, gap: 12 },
+  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.borderAlt },
+  dividerLabel: { color: colors.textDim, fontSize: 12, fontWeight: '600', letterSpacing: 1 },
+  socialButton: {
+    flexDirection: 'row',
+    gap: 10,
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: colors.text,
-    fontSize: 14,
-  },
-  primaryButton: {
-    marginTop: 20,
-    backgroundColor: colors.accent,
-    borderRadius: 8,
-    paddingVertical: 12,
+    borderRadius: 12,
+    height: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 44,
-  },
-  primaryButtonPressed: { backgroundColor: colors.accentDim },
-  primaryButtonText: { color: colors.bg, fontSize: 14, fontWeight: '600' },
-  buttonDisabled: { opacity: 0.5 },
-  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 16, gap: 12 },
-  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.borderAlt },
-  dividerLabel: { color: colors.textDim, fontSize: 11 },
-  socialButton: {
-    backgroundColor: colors.bg,
-    borderColor: colors.borderAlt,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 44,
     marginBottom: 12,
   },
-  socialButtonPressed: { backgroundColor: colors.surfaceAlt },
-  socialButtonText: { color: colors.text, fontSize: 14, fontWeight: '500' },
-  appleButton: { width: '100%', height: 44 },
-  error: { color: colors.danger, fontSize: 13, marginTop: 12 },
-  modeToggle: { alignSelf: 'center', marginTop: 12 },
-  modeToggleText: { color: colors.accent, fontSize: 13 },
-  legal: { color: colors.textDim, fontSize: 11, textAlign: 'center', marginTop: 16 },
-  legalLink: { color: colors.accent },
+  socialPressed: { backgroundColor: colors.surfaceAlt },
+  socialButtonText: { color: colors.text, fontSize: 15, fontWeight: '500' },
+  modeToggle: { alignSelf: 'center', marginTop: 8 },
+  modeToggleText: { color: colors.accent, fontSize: 14 },
+  error: { color: colors.danger, fontSize: 13, marginTop: 14, textAlign: 'center' },
+  legal: { color: colors.textDim, fontSize: 11, textAlign: 'center', marginTop: 24, lineHeight: 16 },
+  legalLink: { color: colors.textMuted, textDecorationLine: 'underline' },
 });

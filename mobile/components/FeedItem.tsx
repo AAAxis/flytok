@@ -7,6 +7,8 @@ import { VideoView, type VideoPlayer } from 'expo-video';
 import { commentsCol, deleteOwnVideo, follow, followingCol, likesCol, savesCol, toggleLike, toggleSave, unfollow, type VideoDoc } from '@/lib/firestore';
 import { useUserLabel, useUserProfile } from '@/lib/useUserLabel';
 import { useAuth } from '@/lib/AuthContext';
+import { getPlaceVideoCount } from '@/lib/search/queries';
+import { placeSlug } from '@/components/PlaceCard';
 import { CommentsSheet } from '@/components/CommentsSheet';
 import { ShareToChatSheet } from '@/components/ShareToChatSheet';
 import { ReportSheet } from '@/components/ReportSheet';
@@ -53,6 +55,7 @@ export function FeedItem({
   const [saved, setSaved] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(Math.max(0, item.likeCount ?? 0));
+  const [routeCount, setRouteCount] = useState(0);
   const [holding, setHolding] = useState(false);
   const [progress, setProgress] = useState(0);
   const [scrubbing, setScrubbing] = useState(false);
@@ -142,6 +145,26 @@ export function FeedItem({
       );
   }, [active, me, item.id]);
 
+  // Resolve the "routes" count (videos recorded at this place) once the card
+  // is active. Best-effort — falls back to 0 (row hidden) on any failure.
+  useEffect(() => {
+    if (!active) return;
+    const label = item.location?.label;
+    if (!label) {
+      setRouteCount(0);
+      return;
+    }
+    let cancelled = false;
+    getPlaceVideoCount(label)
+      .then((n) => {
+        if (!cancelled) setRouteCount(n);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [active, item.location?.label]);
+
   async function handleSave() {
     console.log('[save] tapped', { videoId: item.id, signedIn: !!me, saved });
     if (!me) {
@@ -190,6 +213,11 @@ export function FeedItem({
   function openOwnerProfile() {
     console.log('[author-tap]', { ownerId: item.ownerId, isOwner });
     router.push(`/user/${item.ownerId}` as never);
+  }
+  function openPlace() {
+    const label = item.location?.label;
+    if (!label) return;
+    router.push(`/place/${placeSlug(label)}?label=${encodeURIComponent(label)}` as never);
   }
 
   return (
@@ -279,41 +307,59 @@ export function FeedItem({
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.bottomLeft}>
           <View style={styles.authorRow}>
-            <Pressable
-              onPress={openOwnerProfile}
-              hitSlop={6}
-              style={styles.authorTap}
-            >
-              {ownerProfile?.photoURL ? (
-                <Image source={{ uri: ownerProfile.photoURL }} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatar, styles.avatarFallback]}>
-                  <Ionicons name="person" size={16} color={colors.text} />
-                </View>
-              )}
+            <Pressable onPress={openOwnerProfile} hitSlop={6} style={styles.authorTap}>
               <Text style={styles.author}>{ownerLabel}</Text>
             </Pressable>
-            {!isOwner && (
-              <Pressable
-                onPress={toggleFollow}
-                hitSlop={6}
-                style={[styles.followPill, following && styles.followingPill]}
-              >
-                <Text style={[styles.followText, following && styles.followingText]}>
-                  {following ? 'Following' : 'Follow'}
-                </Text>
-              </Pressable>
-            )}
           </View>
           {item.caption ? <Text style={styles.caption}>{item.caption}</Text> : null}
+          {routeCount > 0 ? (
+            <View style={styles.metaRow}>
+              <Ionicons name="git-branch" size={13} color="#fff" style={styles.metaIcon} />
+              <Text style={styles.metaText}>
+                {routeCount} {routeCount === 1 ? 'Route' : 'Routes'}
+              </Text>
+            </View>
+          ) : null}
+          {item.location?.label ? (
+            <Pressable onPress={openPlace} hitSlop={4} style={styles.metaRow}>
+              <Ionicons name="location" size={13} color="#fff" style={styles.metaIcon} />
+              <Text style={styles.metaText} numberOfLines={1}>
+                {item.location.label}
+              </Text>
+            </Pressable>
+          ) : null}
+          <View style={styles.musicRow}>
+            <Ionicons name="musical-notes" size={13} color="#fff" />
+            <Text style={styles.musicText} numberOfLines={1}>
+              {item.audioTitle
+                ? `${item.audioTitle}${item.audioArtist ? ` · ${item.audioArtist}` : ''}`
+                : `Original audio · ${ownerLabel}`}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.actions}>
+          <Pressable onPress={openOwnerProfile} style={styles.railAvatarWrap} hitSlop={6}>
+            {ownerProfile?.photoURL ? (
+              <Image source={{ uri: ownerProfile.photoURL }} style={styles.railAvatar} />
+            ) : (
+              <View style={[styles.railAvatar, styles.railAvatarFallback]}>
+                <Ionicons name="person" size={22} color="#fff" />
+              </View>
+            )}
+            {!isOwner && !following && (
+              <Pressable onPress={toggleFollow} style={styles.railFollowBadge} hitSlop={8}>
+                <Ionicons name="add" size={14} color="#fff" />
+              </Pressable>
+            )}
+          </Pressable>
+
           <Pressable onPress={handleLike} style={styles.actionButton} hitSlop={8}>
             <Ionicons
-              name={liked ? 'heart' : 'heart-outline'}
-              size={32}
-              color={liked ? '#ff3b5c' : colors.text}
+              name="heart"
+              size={38}
+              color={liked ? '#ff3b5c' : '#fff'}
+              style={styles.actionIcon}
             />
             <Text style={styles.actionLabel}>{Math.max(0, likeCount)}</Text>
           </Pressable>
@@ -322,7 +368,7 @@ export function FeedItem({
             style={styles.actionButton}
             hitSlop={8}
           >
-            <Ionicons name="chatbubble-outline" size={28} color={colors.text} />
+            <Ionicons name="chatbubble" size={34} color="#fff" style={styles.actionIcon} />
             <Text style={styles.actionLabel}>{commentCount}</Text>
           </Pressable>
           <Pressable
@@ -331,19 +377,18 @@ export function FeedItem({
             hitSlop={8}
           >
             <Ionicons
-              name={saved ? 'bookmark' : 'bookmark-outline'}
-              size={28}
-              color={saved ? colors.accent : colors.text}
+              name="bookmark"
+              size={34}
+              color={saved ? colors.accent : '#fff'}
+              style={styles.actionIcon}
             />
-            <Text style={styles.actionLabel}>{saved ? 'Saved' : 'Save'}</Text>
           </Pressable>
           <Pressable
             onPress={() => setShowShare(true)}
             style={styles.actionButton}
             hitSlop={8}
           >
-            <Ionicons name="paper-plane-outline" size={28} color={colors.text} />
-            <Text style={styles.actionLabel}>Share</Text>
+            <Ionicons name="arrow-redo" size={34} color="#fff" style={styles.actionIcon} />
           </Pressable>
           <Pressable
             onPress={() => {
@@ -396,8 +441,7 @@ export function FeedItem({
             accessibilityLabel={canManage ? 'More post options' : 'Report this video'}
             accessibilityRole="button"
           >
-            <Ionicons name="ellipsis-horizontal" size={28} color={colors.text} />
-            <Text style={styles.actionLabel}>{canManage ? 'More' : 'Report'}</Text>
+            <Ionicons name="ellipsis-horizontal" size={28} color="#fff" style={styles.actionIcon} />
           </Pressable>
         </View>
       </View>
@@ -502,7 +546,65 @@ const styles = StyleSheet.create({
   followText: { color: colors.bg, fontSize: 11, fontWeight: '700' },
   followingText: { color: colors.text },
   caption: { color: colors.text, fontSize: 13, opacity: 0.95 },
-  actions: { gap: 28, alignItems: 'center' },
-  actionButton: { alignItems: 'center', gap: 6 },
-  actionLabel: { color: colors.text, fontSize: 11, fontWeight: '600' },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  metaIcon: {
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowRadius: 3,
+  },
+  metaText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '500',
+    flexShrink: 1,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowRadius: 3,
+  },
+  musicRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  musicText: {
+    color: '#fff',
+    fontSize: 12,
+    flexShrink: 1,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowRadius: 3,
+  },
+  actions: { gap: 22, alignItems: 'center' },
+  railAvatarWrap: { alignItems: 'center', marginBottom: 6 },
+  railAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  railAvatarFallback: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  railFollowBadge: {
+    position: 'absolute',
+    bottom: -9,
+    left: 13,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#000',
+  },
+  actionButton: { alignItems: 'center', gap: 5 },
+  actionIcon: {
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 5,
+  },
+  actionLabel: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowRadius: 3,
+  },
 });

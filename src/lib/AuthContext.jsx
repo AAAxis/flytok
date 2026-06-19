@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
   GoogleAuthProvider,
+  OAuthProvider,
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
@@ -46,6 +47,9 @@ export function AuthProvider({ children }) {
   const loginWithGoogle = () =>
     signInWithPopup(firebaseAuth, new GoogleAuthProvider());
 
+  const loginWithApple = () =>
+    signInWithPopup(firebaseAuth, new OAuthProvider('apple.com'));
+
   const sendReset = (email) => sendPasswordResetEmail(firebaseAuth, email);
 
   const logout = () => signOut(firebaseAuth);
@@ -55,7 +59,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, role, isAdmin, isAdvertiser, loading, login, loginWithGoogle, sendReset, logout }}
+      value={{ user, role, isAdmin, isAdvertiser, loading, login, loginWithGoogle, loginWithApple, sendReset, logout }}
     >
       {children}
     </AuthContext.Provider>

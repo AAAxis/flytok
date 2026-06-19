@@ -4,12 +4,17 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
-import { BottomSheetScrollView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Stack, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -20,28 +25,21 @@ import {
   usernamesCol,
   usersCol,
 } from '@/lib/firestore';
-import { useAuth } from '@/lib/AuthContext';
 import {
   USERNAME_MAX,
   normaliseUsername,
   usernameErrorMessage,
   validateUsername,
 } from '@/lib/username';
-import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
+import { useAuth } from '@/lib/AuthContext';
 import { colors } from '@/lib/theme';
 
 type TakenState = 'idle' | 'checking' | 'free' | 'taken';
 
-export function EditProfileSheet({
-  visible,
-  onClose,
-  onSaved,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSaved?: () => void;
-}) {
+export default function EditProfileScreen() {
   const me = auth().currentUser;
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { logout } = useAuth();
   const [username, setUsername] = useState('');
   const [originalUsername, setOriginalUsername] = useState('');
@@ -54,7 +52,7 @@ export function EditProfileSheet({
   const takenSeq = useRef(0);
 
   useEffect(() => {
-    if (!visible || !me) return;
+    if (!me) return;
     usersCol()
       .doc(me.uid)
       .get()
@@ -66,14 +64,10 @@ export function EditProfileSheet({
         setDisplayName((data.displayName as string) ?? '');
         setBio((data.bio as string) ?? '');
         setPhotoURL((data.photoURL as string) ?? null);
-        setTaken('idle');
       })
       .catch(() => {});
-  }, [visible, me]);
+  }, [me]);
 
-  // Debounced server-side taken-check. Only runs when the local validator
-  // passes AND the value differs from the original — saves a Firestore read
-  // per keystroke.
   useEffect(() => {
     if (!me) return;
     const lower = normaliseUsername(username);
@@ -114,12 +108,10 @@ export function EditProfileSheet({
       quality: 0.8,
     });
     if (res.canceled || !res.assets[0]) return;
-
     setUploading(true);
     try {
       const url = await uploadProfilePhoto(res.assets[0].uri);
       setPhotoURL(url);
-      onSaved?.();
     } catch (err: any) {
       Alert.alert('Upload failed', err?.message ?? 'Try again later.');
     } finally {
@@ -129,8 +121,7 @@ export function EditProfileSheet({
 
   const usernameError = username ? validateUsername(normaliseUsername(username)) : null;
   const usernameChanged = normaliseUsername(username) !== originalUsername;
-  const usernameBlocking =
-    !!usernameError || taken === 'checking' || taken === 'taken';
+  const usernameBlocking = !!usernameError || taken === 'checking' || taken === 'taken';
 
   async function save() {
     setBusy(true);
@@ -152,8 +143,7 @@ export function EditProfileSheet({
         }
       }
       await updateProfile({ displayName, bio });
-      onSaved?.();
-      onClose();
+      router.back();
     } catch (err: any) {
       Alert.alert('Could not save', err?.message ?? 'Try again later.');
     } finally {
@@ -191,107 +181,100 @@ export function EditProfileSheet({
   }
 
   return (
-    <AppBottomSheet
-      visible={visible}
-      onClose={onClose}
-      snapPoints={['100%']}
-      keyboardBehavior="extend"
-      keyboardBlurBehavior="restore"
-      title="Edit profile"
-    >
-      <BottomSheetScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        <View style={styles.photoRow}>
-          <Pressable onPress={pickPhoto} disabled={uploading} style={styles.photoWrap} hitSlop={8}>
-            {photoURL ? (
-              <Image source={{ uri: photoURL }} style={styles.photo} />
-            ) : (
-              <View style={[styles.photo, styles.photoPlaceholder]}>
-                <Ionicons name="person" size={28} color={colors.text} />
-              </View>
-            )}
-            <View style={styles.photoBadge}>
-              {uploading ? (
-                <ActivityIndicator size="small" color={colors.bg} />
-              ) : (
-                <Ionicons name="camera" size={14} color={colors.bg} />
-              )}
-            </View>
-          </Pressable>
-          <Pressable onPress={pickPhoto} disabled={uploading} hitSlop={8}>
-            <Text style={styles.photoAction}>
-              {uploading ? 'Uploading…' : 'Change photo'}
-            </Text>
-          </Pressable>
-        </View>
-
-        <Text style={styles.label}>Username</Text>
-        <View style={styles.usernameRow}>
-          <Text style={styles.usernamePrefix}>@</Text>
-          <BottomSheetTextInput
-            value={username}
-            onChangeText={(v) => setUsername(v.toLowerCase())}
-            placeholder="your_handle"
-            placeholderTextColor={colors.textFaint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            maxLength={USERNAME_MAX}
-            style={styles.usernameInput}
-          />
-          <UsernameStatus
-            error={usernameError}
-            changed={usernameChanged}
-            taken={taken}
-          />
-        </View>
-        <UsernameHelper
-          error={usernameError}
-          changed={usernameChanged}
-          taken={taken}
-        />
-
-        <Text style={styles.label}>Name</Text>
-        <BottomSheetTextInput
-          value={displayName}
-          onChangeText={setDisplayName}
-          placeholder="Your name"
-          placeholderTextColor={colors.textFaint}
-          maxLength={40}
-          style={styles.input}
-        />
-
-        <Text style={styles.label}>Bio</Text>
-        <BottomSheetTextInput
-          value={bio}
-          onChangeText={setBio}
-          placeholder="Tell people about you"
-          placeholderTextColor={colors.textFaint}
-          maxLength={120}
-          multiline
-          style={[styles.input, styles.bio]}
-        />
-        <Text style={styles.counter}>{bio.length}/120</Text>
-
-        <Pressable
-          onPress={save}
-          disabled={busy || (usernameChanged && usernameBlocking)}
-          style={[
-            styles.saveBtn,
-            (busy || (usernameChanged && usernameBlocking)) && styles.saveBtnDisabled,
-          ]}
-        >
+    <View style={styles.root}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <Pressable onPress={() => router.back()} hitSlop={8} style={styles.headerBtn} accessibilityLabel="Back">
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
+        </Pressable>
+        <Text style={styles.headerTitle}>Edit profile</Text>
+        <Pressable onPress={save} disabled={busy || (usernameChanged && usernameBlocking)} hitSlop={8} style={styles.headerBtn}>
           {busy ? (
-            <ActivityIndicator color={colors.bg} />
+            <ActivityIndicator color={colors.accent} />
           ) : (
-            <Text style={styles.saveText}>Save</Text>
+            <Text style={[styles.headerSave, (usernameChanged && usernameBlocking) && styles.headerSaveDisabled]}>Save</Text>
           )}
         </Pressable>
+      </View>
 
-        <Pressable onPress={confirmDelete} style={styles.deleteBtn} hitSlop={6}>
-          <Ionicons name="trash-outline" size={16} color={colors.danger} />
-          <Text style={styles.deleteText}>Delete account</Text>
-        </Pressable>
-      </BottomSheetScrollView>
-    </AppBottomSheet>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
+        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={styles.photoRow}>
+            <Pressable onPress={pickPhoto} disabled={uploading} style={styles.photoWrap} hitSlop={8}>
+              {photoURL ? (
+                <Image source={{ uri: photoURL }} style={styles.photo} />
+              ) : (
+                <View style={[styles.photo, styles.photoPlaceholder]}>
+                  <Ionicons name="person" size={28} color={colors.text} />
+                </View>
+              )}
+              <View style={styles.photoBadge}>
+                {uploading ? (
+                  <ActivityIndicator size="small" color={colors.bg} />
+                ) : (
+                  <Ionicons name="camera" size={14} color={colors.bg} />
+                )}
+              </View>
+            </Pressable>
+            <Pressable onPress={pickPhoto} disabled={uploading} hitSlop={8}>
+              <Text style={styles.photoAction}>{uploading ? 'Uploading…' : 'Change photo'}</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.label}>Username</Text>
+          <View style={styles.usernameRow}>
+            <Text style={styles.usernamePrefix}>@</Text>
+            <TextInput
+              value={username}
+              onChangeText={(v) => setUsername(v.toLowerCase())}
+              placeholder="your_handle"
+              placeholderTextColor={colors.textFaint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={USERNAME_MAX}
+              style={styles.usernameInput}
+            />
+            <UsernameStatus error={usernameError} changed={usernameChanged} taken={taken} />
+          </View>
+          <UsernameHelper error={usernameError} changed={usernameChanged} taken={taken} />
+
+          <Text style={styles.label}>Name</Text>
+          <TextInput
+            value={displayName}
+            onChangeText={setDisplayName}
+            placeholder="Your name"
+            placeholderTextColor={colors.textFaint}
+            maxLength={40}
+            style={styles.input}
+          />
+
+          <Text style={styles.label}>Bio</Text>
+          <TextInput
+            value={bio}
+            onChangeText={setBio}
+            placeholder="Tell people about you"
+            placeholderTextColor={colors.textFaint}
+            maxLength={120}
+            multiline
+            style={[styles.input, styles.bio]}
+          />
+          <Text style={styles.counter}>{bio.length}/120</Text>
+
+          <Pressable
+            onPress={save}
+            disabled={busy || (usernameChanged && usernameBlocking)}
+            style={[styles.saveBtn, (busy || (usernameChanged && usernameBlocking)) && styles.saveBtnDisabled]}
+          >
+            {busy ? <ActivityIndicator color={colors.bg} /> : <Text style={styles.saveText}>Save</Text>}
+          </Pressable>
+
+          <Pressable onPress={confirmDelete} style={styles.deleteBtn} hitSlop={6}>
+            <Ionicons name="trash-outline" size={16} color={colors.danger} />
+            <Text style={styles.deleteText}>Delete account</Text>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -321,26 +304,32 @@ function UsernameHelper({
   changed: boolean;
   taken: TakenState;
 }) {
-  if (!changed) {
-    return <Text style={styles.helper}>3–24 chars · letters, numbers, "." and "_"</Text>;
-  }
-  if (error) {
-    return <Text style={styles.helperError}>{usernameErrorMessage(error)}</Text>;
-  }
-  if (taken === 'taken') {
-    return <Text style={styles.helperError}>That handle is already taken.</Text>;
-  }
-  if (taken === 'free') {
-    return <Text style={styles.helperOk}>Available.</Text>;
-  }
-  return <Text style={styles.helper}>3–24 chars · letters, numbers, "." and "_"</Text>;
+  if (changed && error) return <Text style={styles.helperError}>{usernameErrorMessage(error)}</Text>;
+  if (changed && taken === 'taken') return <Text style={styles.helperError}>That handle is already taken.</Text>;
+  if (changed && taken === 'free') return <Text style={styles.helperOk}>Available.</Text>;
+  return <Text style={styles.helper}>3–24 chars · letters, numbers, &quot;.&quot; and &quot;_&quot;</Text>;
 }
 
 const styles = StyleSheet.create({
-  body: { padding: 16, paddingBottom: 32 },
+  root: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerBtn: { minWidth: 56, height: 36, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  headerSave: { color: colors.accent, fontSize: 15, fontWeight: '700' },
+  headerSaveDisabled: { opacity: 0.4 },
+  body: { padding: 16, paddingBottom: 48 },
   photoRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 8 },
   photoWrap: { position: 'relative' },
-  photo: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.bg },
+  photo: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.surface },
   photoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   photoBadge: {
     position: 'absolute',
@@ -352,7 +341,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    borderColor: colors.surface,
+    borderColor: colors.bg,
     borderWidth: 2,
   },
   photoAction: { color: colors.accent, fontSize: 14, fontWeight: '600' },
@@ -362,12 +351,12 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 6,
-    marginTop: 12,
+    marginTop: 14,
   },
   usernameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.bg,
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 8,
@@ -375,22 +364,17 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   usernamePrefix: { color: colors.textDim, fontSize: 14, fontWeight: '600' },
-  usernameInput: {
-    flex: 1,
-    paddingVertical: 10,
-    color: colors.text,
-    fontSize: 14,
-  },
+  usernameInput: { flex: 1, paddingVertical: 12, color: colors.text, fontSize: 14 },
   helper: { color: colors.textFaint, fontSize: 11, marginTop: 4 },
   helperError: { color: colors.danger, fontSize: 11, marginTop: 4 },
   helperOk: { color: colors.accent, fontSize: 11, marginTop: 4 },
   input: {
-    backgroundColor: colors.bg,
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     color: colors.text,
     fontSize: 14,
   },
@@ -400,17 +384,17 @@ const styles = StyleSheet.create({
     marginTop: 20,
     backgroundColor: colors.accent,
     borderRadius: 8,
-    paddingVertical: 12,
+    paddingVertical: 13,
     alignItems: 'center',
   },
   saveBtnDisabled: { opacity: 0.5 },
-  saveText: { color: colors.bg, fontSize: 14, fontWeight: '600' },
+  saveText: { color: colors.bg, fontSize: 15, fontWeight: '700' },
   deleteBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 14,
+    paddingVertical: 16,
     marginTop: 8,
   },
   deleteText: { color: colors.danger, fontSize: 14, fontWeight: '600' },

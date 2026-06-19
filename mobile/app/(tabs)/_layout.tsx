@@ -2,11 +2,14 @@ import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, View, StyleSheet } from 'react-native';
 import { colors } from '@/lib/theme';
+import { AppHeader } from '@/components/AppHeader';
 
 export default function TabsLayout() {
   const router = useRouter();
   return (
-    <Tabs
+    <View style={styles.container}>
+      <AppHeader />
+      <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
@@ -15,21 +18,25 @@ export default function TabsLayout() {
         },
         tabBarActiveTintColor: colors.text,
         tabBarInactiveTintColor: colors.textDim,
-        tabBarShowLabel: true,
+        tabBarShowLabel: false,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Feed',
-          tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="map"
         options={{
           title: 'Map',
-          tabBarIcon: ({ color, size }) => <Ionicons name="map" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'map' : 'map-outline'} size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -38,7 +45,7 @@ export default function TabsLayout() {
           title: '',
           tabBarIcon: () => (
             <View style={styles.uploadButton}>
-              <Ionicons name="add" size={26} color={colors.bg} />
+              <Ionicons name="add" size={28} color={colors.accent} />
             </View>
           ),
           tabBarButton: (props) => (
@@ -56,26 +63,36 @@ export default function TabsLayout() {
         name="saved"
         options={{
           title: 'Saved',
-          tabBarIcon: ({ color, size }) => <Ionicons name="bookmark" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'bookmark' : 'bookmark-outline'} size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, size }) => <Ionicons name="person" size={size} color={color} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />
+          ),
         }}
       />
-    </Tabs>
+      {/* Post viewer lives inside the tabs so the navbar stays visible; no tab button. */}
+      <Tabs.Screen name="posts/[uid]" options={{ href: null }} />
+      </Tabs>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#000' },
   uploadButton: {
-    width: 44,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: colors.accent,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },

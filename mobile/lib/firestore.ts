@@ -19,6 +19,12 @@ export type VideoDoc = {
   hashtags?: string[];
   likeCount?: number;
   createdAt?: FirebaseFirestoreTypes.Timestamp;
+  /** W4 audio metadata — denormalised so the feed can render the music row. */
+  audioSource?: 'original' | 'library' | 'user_upload';
+  audioTrackId?: string;
+  audioUserPath?: string;
+  audioTitle?: string;
+  audioArtist?: string;
 };
 
 /**
@@ -278,6 +284,73 @@ export async function getMyVideos(uid: string): Promise<VideoDoc[]> {
     });
     return items;
   }
+}
+
+/** A single stop on a saved trip route — mirrors what `create-trip` writes. */
+export type TripStop = {
+  latitude: number;
+  longitude: number;
+  description: string;
+  imageUrl?: string | null;
+};
+
+/** A saved trip route stored at `users/{uid}/trips/{tripId}`. */
+export type Trip = {
+  id: string;
+  name: string;
+  stops: TripStop[];
+  createdAt?: FirebaseFirestoreTypes.Timestamp;
+};
+
+export function tripsCol(uid: string) {
+  return usersCol().doc(uid).collection('trips');
+}
+
+/** The user's saved trip routes, newest first. */
+export async function getMyTrips(uid: string): Promise<Trip[]> {
+  try {
+    const snap = await tripsCol(uid).orderBy('createdAt', 'desc').limit(100).get();
+    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Trip, 'id'>) }));
+  } catch (err) {
+    // No composite index needed here, but fall back defensively just in case.
+    console.warn('[trips] ordered query failed, falling back:', err);
+    const snap = await tripsCol(uid).limit(100).get();
+    const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Trip, 'id'>) }));
+    items.sort(
+      (a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0),
+    );
+    return items;
+  }
+}
+
+/** One saved trip by id, or null if it doesn't exist. */
+export async function getTrip(uid: string, tripId: string): Promise<Trip | null> {
+  const snap = await tripsCol(uid).doc(tripId).get();
+  const data = snap.data();
+  if (!data) return null;
+  return { id: snap.id, ...(data as Omit<Trip, 'id'>) };
+}
+
+/**
+ * Overwrite the stops array on a trip. Stops are stored inline on the trip doc
+ * (not a subcollection), so editing one stop means writing the whole array
+ * back — callers compute the new array client-side and pass it here.
+ */
+export async function updateTripStops(
+  uid: string,
+  tripId: string,
+  stops: TripStop[],
+): Promise<void> {
+  await tripsCol(uid)
+    .doc(tripId)
+    .update({
+      stops: stops.map((s) => ({
+        latitude: s.latitude,
+        longitude: s.longitude,
+        description: s.description.trim(),
+        imageUrl: s.imageUrl ?? null,
+      })),
+    });
 }
 
 export async function updateProfile({
@@ -760,11 +833,14 @@ function audioToDocFields(audio: AudioSelection | undefined) {
     return {
       audioSource: 'library' as const,
       audioTrackId: audio.track.id,
+      audioTitle: audio.track.title,
+      audioArtist: audio.track.artist,
     };
   }
   return {
     audioSource: 'user_upload' as const,
     audioUserPath: audio.storagePath,
+    audioTitle: audio.title,
   };
 }
 
