@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "com.roamrez.flytok",
-      "versionCode": 5,
+      "versionCode": 6,
       "googleServicesFile": "../firebase/google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#000000",
