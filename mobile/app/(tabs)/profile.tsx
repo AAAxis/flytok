@@ -3,6 +3,7 @@ import auth from '@react-native-firebase/auth';
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Image,
   Pressable,
@@ -13,49 +14,33 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import {
   followersCol,
   followingCol,
+  deleteOwnVideo,
   getFollowCounts,
   getMyTrips,
   getMyVideos,
   usersCol,
   type Trip,
-  type TripStop,
   type VideoDoc,
 } from '@/lib/firestore';
 import { VideoGrid } from '@/components/VideoGrid';
 import { ProfileVideoMap } from '@/components/profile/ProfileVideoMap';
-import { TripRouteMap } from '@/components/profile/TripRouteMap';
+import { ProfileRoutesList } from '@/components/profile/ProfileRoutesList';
 import { FollowListSheet } from '@/components/FollowListSheet';
 import { RouteIcon } from '@/components/RouteIcon';
 import { getCachedProfile, setCachedProfile } from '@/lib/profileCache';
 import { colors } from '@/lib/theme';
 import { useUserTheme } from '@/lib/theme/userTheme';
 import { dicebearURL } from '@/lib/avatars';
+import { ROUTES_CREATE_ENABLED, ROUTES_DISPLAY_ENABLED } from '@/lib/features';
+import { presentTopupPaywall } from '@/lib/purchases';
 
 type Tab = 'mine' | 'map' | 'routes';
 
 const AVATAR_SIZE = 84;
-
-/** 1–3 trophy rating from followers + routes — a light gamification signal. */
-function ratingFor(followers: number, routes: number): number {
-  const score = followers + routes * 20;
-  if (score >= 1000) return 3;
-  if (score >= 100) return 2;
-  return 1;
-}
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function formatDate(ts?: { toDate?: () => Date }): string {
-  const d = ts?.toDate?.();
-  if (!d) return '';
-  return `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-}
 
 export default function Profile() {
   const router = useRouter();
@@ -113,8 +98,6 @@ export default function Profile() {
     return best;
   }, [mine]);
 
-  const rating = ratingFor(counts.followers, trips.length);
-
   const load = useCallback(async () => {
     if (!me) return;
     const [profileSnap, myVideos, myTrips, followCounts] = await Promise.all([
@@ -123,10 +106,12 @@ export default function Profile() {
         console.warn('[profile] getMyVideos failed:', err);
         return [];
       }),
-      getMyTrips(me.uid).catch((err) => {
-        console.warn('[profile] getMyTrips failed:', err);
-        return [];
-      }),
+      ROUTES_DISPLAY_ENABLED
+        ? getMyTrips(me.uid).catch((err) => {
+            console.warn('[profile] getMyTrips failed:', err);
+            return [];
+          })
+        : Promise.resolve([]),
       getFollowCounts(me.uid),
     ]);
     const profileData = profileSnap.data() ?? {};
@@ -184,9 +169,39 @@ export default function Profile() {
     }
   }
 
+  const confirmDeleteVideo = useCallback((video: VideoDoc) => {
+    Alert.alert(
+      'Delete this post?',
+      'This permanently removes the video. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteOwnVideo(video);
+              setMine((prev) => prev.filter((v) => v.id !== video.id));
+            } catch (err: any) {
+              Alert.alert('Could not delete', err?.message ?? 'Try again later.');
+            }
+          },
+        },
+      ],
+    );
+  }, []);
+
   if (!me) return null;
 
   const topHandle = username ?? `user_${me.uid.slice(0, 6)}`;
+
+  async function showPremiumPaywall() {
+    try {
+      await presentTopupPaywall();
+    } catch (err: any) {
+      Alert.alert('Paywall unavailable', err?.message ?? 'Try again later.');
+    }
+  }
 
   return (
     <View style={styles.root}>
@@ -220,18 +235,7 @@ export default function Profile() {
                 <View style={styles.statsRow}>
                   <Stat label="Followers" value={counts.followers} onPress={() => setFollowList('followers')} />
                   <Stat label="Following" value={counts.following} onPress={() => setFollowList('following')} />
-                  <Stat label="Routes" value={trips.length} />
-                </View>
-                {/* Explorer rating — gold trophies scaled to followers/routes */}
-                <View style={styles.ratingRow}>
-                  {[1, 2, 3].map((n) => (
-                    <Ionicons
-                      key={n}
-                      name="trophy"
-                      size={20}
-                      color={n <= rating ? '#f5c518' : 'rgba(255,255,255,0.18)'}
-                    />
-                  ))}
+                  {ROUTES_DISPLAY_ENABLED ? <Stat label="Routes" value={trips.length} /> : null}
                 </View>
               </View>
             </View>
@@ -266,13 +270,15 @@ export default function Profile() {
             <View style={styles.tabsBar}>
               <TabButton active={tab === 'mine'} icon="grid" label="My videos" onPress={() => setTab('mine')} />
               <TabButton active={tab === 'map'} icon="map" label="My map" onPress={() => setTab('map')} />
-              <TabButton
-                active={tab === 'routes'}
-                icon="location"
-                label="My routes"
-                onPress={() => setTab('routes')}
-                customIcon={<RouteIcon size={20} />}
-              />
+              {ROUTES_DISPLAY_ENABLED ? (
+                <TabButton
+                  active={tab === 'routes'}
+                  icon="location"
+                  label="My routes"
+                  onPress={() => setTab('routes')}
+                  customIcon={<RouteIcon size={20} />}
+                />
+              ) : null}
             </View>
 
             {tab === 'mine' ? (
@@ -280,6 +286,7 @@ export default function Profile() {
                 videos={mine}
                 emptyLabel="No videos yet"
                 onPress={(v) => router.push(`/posts/${me.uid}?start=${v.id}&source=mine` as never)}
+                onLongPress={confirmDeleteVideo}
               />
             ) : tab === 'map' ? (
               <ProfileVideoMap
@@ -287,10 +294,21 @@ export default function Profile() {
                 loading={loading}
                 onPressVideo={(v) => router.push(`/posts/${me.uid}?start=${v.id}&source=mine` as never)}
               />
-            ) : (
-              <RoutesTab
+            ) : ROUTES_DISPLAY_ENABLED ? (
+              <ProfileRoutesList
                 trips={trips}
+                ownerUid={me.uid}
+                canCreate={ROUTES_CREATE_ENABLED}
                 onCreate={() => router.push('/create-trip' as never)}
+                onGetPremium={showPremiumPaywall}
+                emptyLabel="No routes yet. Premium members can create trip routes from their videos."
+              />
+            ) : (
+              <VideoGrid
+                videos={mine}
+                emptyLabel="No videos yet"
+                onPress={(v) => router.push(`/posts/${me.uid}?start=${v.id}&source=mine` as never)}
+                onLongPress={confirmDeleteVideo}
               />
             )}
           </>
@@ -303,118 +321,6 @@ export default function Profile() {
         visible={followList !== null}
         onClose={() => setFollowList(null)}
       />
-    </View>
-  );
-}
-
-// Reverse-geocode cache keyed by coarse coordinate → ISO-2 country code (or
-// null when unknown). Module-scope so it survives tab switches / re-renders.
-const flagIsoCache = new Map<string, string | null>();
-const flagCoordKey = (lat: number, lng: number) => `${lat.toFixed(2)},${lng.toFixed(2)}`;
-
-/**
- * Country flag for a trip, derived by reverse-geocoding its first stop. Trips
- * carry no country label, so we resolve one from coordinates and show the
- * flagcdn image; falls back to a map glyph while resolving or on failure.
- */
-function TripFlag({ stop }: { stop?: TripStop }) {
-  const key = stop ? flagCoordKey(stop.latitude, stop.longitude) : null;
-  const [iso, setIso] = useState<string | null>(() => (key ? flagIsoCache.get(key) ?? null : null));
-
-  useEffect(() => {
-    if (!stop || !key) return;
-    if (flagIsoCache.has(key)) {
-      setIso(flagIsoCache.get(key) ?? null);
-      return;
-    }
-    let cancelled = false;
-    Location.reverseGeocodeAsync({ latitude: stop.latitude, longitude: stop.longitude })
-      .then((res) => {
-        const code = res?.[0]?.isoCountryCode?.toLowerCase() ?? null;
-        flagIsoCache.set(key, code);
-        if (!cancelled) setIso(code);
-      })
-      .catch(() => {
-        flagIsoCache.set(key, null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [stop, key]);
-
-  if (iso) {
-    return <Image source={{ uri: `https://flagcdn.com/w40/${iso}.png` }} style={styles.routeFlag} />;
-  }
-  return <Ionicons name="map" size={18} color="#fff" />;
-}
-
-function RoutesTab({
-  trips,
-  onCreate,
-}: {
-  trips: Trip[];
-  onCreate: () => void;
-}) {
-  const [openId, setOpenId] = useState<string | null>(null);
-  return (
-    <View style={styles.routesWrap}>
-      {trips.length === 0 ? (
-        <View style={styles.routesEmpty}>
-          <Ionicons name="trail-sign-outline" size={30} color={colors.textFaint} />
-          <Text style={styles.routesEmptyText}>
-            No routes yet. Create a trip route and drop stops on the map.
-          </Text>
-        </View>
-      ) : (
-        trips.map((t) => {
-          const stopCount = t.stops?.length ?? 0;
-          const open = openId === t.id;
-          return (
-            <View key={t.id}>
-              <Pressable
-                onPress={() => setOpenId(open ? null : t.id)}
-                style={({ pressed }) => pressed && styles.actionPressed}
-              >
-                <LinearGradient
-                  colors={['#1c5fa0', '#2e8fd0']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[styles.routeCard, open && styles.routeCardOpen]}
-                >
-                  <TripFlag stop={t.stops?.[0]} />
-                  <View style={styles.routeText}>
-                    <Text style={styles.routeLabel} numberOfLines={1}>
-                      {t.name || 'Untitled trip'}
-                    </Text>
-                    <Text style={styles.routeSub} numberOfLines={1}>
-                      {stopCount} {stopCount === 1 ? 'stop' : 'stops'}
-                      {t.createdAt ? ` · ${formatDate(t.createdAt)}` : ''}
-                    </Text>
-                  </View>
-                  <Ionicons
-                    name={open ? 'chevron-up' : 'chevron-down'}
-                    size={18}
-                    color="rgba(255,255,255,0.9)"
-                  />
-                </LinearGradient>
-              </Pressable>
-              {open ? <TripRouteMap trip={t} /> : null}
-            </View>
-          );
-        })
-      )}
-
-      <Pressable onPress={onCreate} style={({ pressed }) => [pressed && styles.actionPressed]}>
-        <LinearGradient
-          colors={['#38bdf8', '#0ea5e9']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.createBtn}
-        >
-          <Ionicons name="location" size={16} color="#fff" />
-          <Text style={styles.createBtnText}>Create trip route from your videos</Text>
-        </LinearGradient>
-      </Pressable>
     </View>
   );
 }
@@ -503,14 +409,6 @@ const styles = StyleSheet.create({
   stat: { alignItems: 'center', paddingHorizontal: 6 },
   statValue: { color: colors.text, fontSize: 18, fontWeight: '800' },
   statLabel: { color: colors.textDim, fontSize: 12, marginTop: 3 },
-
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 5,
-    marginTop: 10,
-  },
   handle: { color: colors.text, fontSize: 16, fontWeight: '700', paddingHorizontal: 20, marginTop: 14 },
   nameRow: {
     flexDirection: 'row',
@@ -564,47 +462,4 @@ const styles = StyleSheet.create({
   tabLabel: { color: colors.textDim, fontSize: 11, fontWeight: '600' },
   tabLabelActive: { color: colors.text },
 
-  routesWrap: { paddingHorizontal: 16, paddingTop: 14, gap: 10 },
-  routesEmpty: { alignItems: 'center', gap: 10, paddingVertical: 40 },
-  routesEmptyText: { color: colors.textMuted, fontSize: 13, textAlign: 'center', paddingHorizontal: 24 },
-  // Blue gradient rows; 46h, padding 12/25/13/17 (Figma frame).
-  routeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    minHeight: 46,
-    borderRadius: 12,
-    paddingTop: 12,
-    paddingBottom: 13,
-    paddingLeft: 17,
-    paddingRight: 25,
-  },
-  routeCardOpen: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
-  routeFlag: { width: 26, height: 18, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.15)' },
-  routeText: { flex: 1 },
-  routeLabel: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  routeSub: { color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 2 },
-  routeBody: {
-    backgroundColor: '#103a5e',
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    paddingHorizontal: 17,
-    paddingVertical: 12,
-    gap: 8,
-    marginTop: -1,
-  },
-  routeMeta: { color: colors.textMuted, fontSize: 12 },
-  routeCaption: { color: colors.text, fontSize: 13, lineHeight: 18 },
-  routeOpenBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
-  routeOpenText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
-  createBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderRadius: 14,
-    height: 50,
-    marginTop: 8,
-  },
-  createBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 });

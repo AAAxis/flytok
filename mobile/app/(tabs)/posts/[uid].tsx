@@ -146,6 +146,8 @@ export default function UserPostsFeed() {
           )}
           pagingEnabled
           snapToInterval={viewportHeight}
+          snapToAlignment="start"
+          disableIntervalMomentum
           decelerationRate="fast"
           showsVerticalScrollIndicator={false}
           onViewableItemsChanged={onViewableItemsChanged}

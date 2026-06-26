@@ -36,6 +36,7 @@ export type VideoDoc = {
 export const HASHTAG_MAX_TAG_LENGTH = 30;
 export const HASHTAG_TOTAL_CHAR_LIMIT = 80;
 export const HASHTAG_MAX_COUNT = 10;
+export const BIO_MAX = 180;
 
 export function isValidHashtag(tag: string): boolean {
   if (!tag) return false;
@@ -260,6 +261,30 @@ export async function getVideosByIds(ids: string[]): Promise<VideoDoc[]> {
   return out;
 }
 
+function locationKey(loc: VideoLocation): string {
+  const label = loc.label?.trim().toLowerCase();
+  if (label) return `label:${label}`;
+  return `geo:${loc.latitude.toFixed(4)},${loc.longitude.toFixed(4)}`;
+}
+
+export async function getSavedLocations(): Promise<VideoLocation[]> {
+  const user = requireUser();
+  const [savedIds, myVideos] = await Promise.all([
+    getSavedVideoIds(user.uid).catch(() => []),
+    getMyVideos(user.uid).catch(() => []),
+  ]);
+  const savedVideos = await getVideosByIds(savedIds).catch(() => []);
+  const byKey = new Map<string, VideoLocation>();
+  for (const video of [...savedVideos, ...myVideos]) {
+    const loc = video.location;
+    if (!loc?.latitude || !loc?.longitude) continue;
+    byKey.set(locationKey(loc), loc);
+  }
+  return [...byKey.values()].sort((a, b) =>
+    (a.label ?? '').localeCompare(b.label ?? ''),
+  );
+}
+
 export async function getMyVideos(uid: string): Promise<VideoDoc[]> {
   try {
     const snap = await videosCol()
@@ -369,7 +394,7 @@ export async function updateProfile({
     // screen, DM picker) stay in sync with profile edits.
     update.displayNameLower = trimmed ? trimmed.toLowerCase() : null;
   }
-  if (bio !== undefined) update.bio = bio.trim() || null;
+  if (bio !== undefined) update.bio = bio.trim().slice(0, BIO_MAX) || null;
   if (Object.keys(update).length === 0) return;
   await usersCol().doc(user.uid).set(update, { merge: true });
 }
@@ -759,6 +784,7 @@ export type UploadVideoArgs = {
 export async function uploadVideo(args: UploadVideoArgs) {
   const { uri, caption, location, hashtags, mentions, audio, onProgress, taskRef } = args;
   const user = requireUser();
+  if (!location) throw new Error('Location is required');
 
   const ts = Date.now();
   const ext = uri.split('.').pop()?.toLowerCase() || 'mp4';
@@ -912,4 +938,3 @@ export async function uploadProfilePhoto(uri: string): Promise<string> {
   track.profilePhotoChanged();
   return downloadURL;
 }
-

@@ -20,13 +20,14 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import MapView, {
   Marker,
   Polyline,
-  PROVIDER_GOOGLE,
   type Region,
 } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { updateTripStops, type Trip, type TripStop } from '@/lib/firestore';
 import { colors } from '@/lib/theme';
 import { DARK_MAP_STYLE } from '@/lib/mapStyle';
+import { OpenStreetMapTiles, androidOpenMapType } from '@/components/OpenStreetMapTiles';
+import { AndroidOpenMap, AndroidOpenMarker, AndroidOpenPolyline } from '@/components/AndroidOpenMap';
 
 // Warm gold for route points — matches the selected-pin gold on the profile
 // map so a "route" reads as the gold thread through its stops.
@@ -41,12 +42,13 @@ const MAP_HEIGHT = 340;
  * enlarges it and floats a description card (photo + text) over the map,
  * mirroring the place card on the profile map. Tapping empty map dismisses it.
  */
-export function TripRouteMap({ trip }: { trip: Trip }) {
+export function TripRouteMap({ trip, ownerUid }: { trip: Trip; ownerUid?: string }) {
   const [selected, setSelected] = useState<number | null>(null);
   // Local editable copy so description edits show instantly and survive while
   // the screen is mounted; persisted to Firestore on save.
   const [stops, setStops] = useState<TripStop[]>(trip.stops ?? []);
-  const canEdit = (auth().currentUser?.uid ?? null) != null;
+  const currentUid = auth().currentUser?.uid ?? null;
+  const canEdit = currentUid != null && (!ownerUid || currentUid === ownerUid);
 
   useEffect(() => {
     setStops(trip.stops ?? []);
@@ -60,7 +62,8 @@ export function TripRouteMap({ trip }: { trip: Trip }) {
   }, [trip.id, trip.stops]);
 
   async function saveStop(index: number, patch: Partial<TripStop>) {
-    const uid = auth().currentUser?.uid;
+    const uid = ownerUid ?? auth().currentUser?.uid;
+    if (!canEdit) return;
     if (!uid) return;
     const next = stops.map((s, i) => (i === index ? { ...s, ...patch } : s));
     setStops(next); // optimistic
@@ -104,7 +107,7 @@ export function TripRouteMap({ trip }: { trip: Trip }) {
     };
   }, [stops]);
 
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
 
   function fitStops() {
     if (stops.length > 1 && mapRef.current) {
@@ -128,46 +131,73 @@ export function TripRouteMap({ trip }: { trip: Trip }) {
 
   return (
     <View style={styles.wrap}>
-      <MapView
-        ref={mapRef}
-        style={StyleSheet.absoluteFill}
-        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-        customMapStyle={DARK_MAP_STYLE}
-        userInterfaceStyle="dark"
-        initialRegion={initialRegion ?? undefined}
-        showsCompass={false}
-        showsMyLocationButton={false}
-        toolbarEnabled={false}
-        onMapReady={fitStops}
-        // A marker tap also fires the map's onPress on some platforms; ignore
-        // that case so it doesn't immediately clear the stop we just selected.
-        onPress={(e) => {
-          if (e.nativeEvent.action === 'marker-press') return;
-          setSelected(null);
-        }}
-      >
-        {stops.length > 1 ? (
-          <Polyline coordinates={stops} strokeColor={GOLD_LINE} strokeWidth={3} />
-        ) : null}
-        {stops.map((s, i) => {
-          const isSelected = i === selected;
-          return (
-            <Marker
-              // Encode selection into the key so the custom view repaints
-              // (markers don't track view changes after first paint).
-              key={`${i}:${isSelected ? 'sel' : 'def'}`}
-              coordinate={{ latitude: s.latitude, longitude: s.longitude }}
-              anchor={{ x: 0.5, y: 1 }}
-              zIndex={isSelected ? 999 : 1}
-              tracksViewChanges={tracking}
-              onPress={() => setSelected(i)}
-              accessibilityLabel={`Stop ${i + 1}`}
-            >
-              <StopPin index={i + 1} selected={isSelected} />
-            </Marker>
-          );
-        })}
-      </MapView>
+      {Platform.OS === 'android' ? (
+        <AndroidOpenMap
+          ref={mapRef}
+          style={StyleSheet.absoluteFill}
+          initialRegion={initialRegion ?? undefined}
+          onMapReady={fitStops}
+          onPress={() => setSelected(null)}
+        >
+          <AndroidOpenPolyline
+            id={`trip-${trip.id}`}
+            coordinates={stops}
+            strokeColor={GOLD_LINE}
+            strokeWidth={3}
+          />
+          {stops.map((s, i) => {
+            const isSelected = i === selected;
+            return (
+              <AndroidOpenMarker
+                key={`${i}:${isSelected ? 'sel' : 'def'}`}
+                id={`${trip.id}-${i}`}
+                coordinate={{ latitude: s.latitude, longitude: s.longitude }}
+                onPress={() => setSelected(i)}
+              >
+                <StopPin index={i + 1} selected={isSelected} />
+              </AndroidOpenMarker>
+            );
+          })}
+        </AndroidOpenMap>
+      ) : (
+        <MapView
+          ref={mapRef}
+          style={StyleSheet.absoluteFill}
+          mapType={androidOpenMapType}
+          customMapStyle={DARK_MAP_STYLE}
+          userInterfaceStyle="dark"
+          initialRegion={initialRegion ?? undefined}
+          showsCompass={false}
+          showsMyLocationButton={false}
+          toolbarEnabled={false}
+          onMapReady={fitStops}
+          onPress={(e) => {
+            if (e.nativeEvent.action === 'marker-press') return;
+            setSelected(null);
+          }}
+        >
+          <OpenStreetMapTiles />
+          {stops.length > 1 ? (
+            <Polyline coordinates={stops} strokeColor={GOLD_LINE} strokeWidth={3} />
+          ) : null}
+          {stops.map((s, i) => {
+            const isSelected = i === selected;
+            return (
+              <Marker
+                key={`${i}:${isSelected ? 'sel' : 'def'}`}
+                coordinate={{ latitude: s.latitude, longitude: s.longitude }}
+                anchor={{ x: 0.5, y: 1 }}
+                zIndex={isSelected ? 999 : 1}
+                tracksViewChanges={tracking}
+                onPress={() => setSelected(i)}
+                accessibilityLabel={`Stop ${i + 1}`}
+              >
+                <StopPin index={i + 1} selected={isSelected} />
+              </Marker>
+            );
+          })}
+        </MapView>
+      )}
 
       {active ? (
         <StopCard

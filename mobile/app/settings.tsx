@@ -6,7 +6,6 @@ import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/lib/AuthContext';
 import { usersCol } from '@/lib/firestore';
-import { CustomizeThemeSheet } from '@/components/CustomizeThemeSheet';
 import { colors } from '@/lib/theme';
 
 export default function SettingsScreen() {
@@ -14,7 +13,6 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const me = auth().currentUser;
-  const [showCustomize, setShowCustomize] = useState(false);
   const [name, setName] = useState<string | null>(null);
   const [handle, setHandle] = useState<string | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
@@ -63,14 +61,6 @@ export default function SettingsScreen() {
           <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
         </Pressable>
 
-        <Section title="Appearance">
-          <Row
-            icon="color-palette-outline"
-            label="Customize theme"
-            onPress={() => setShowCustomize(true)}
-          />
-        </Section>
-
         <Section title="Account">
           <Row
             icon="person-circle-outline"
@@ -89,7 +79,6 @@ export default function SettingsScreen() {
         </Section>
       </ScrollView>
 
-      <CustomizeThemeSheet visible={showCustomize} onClose={() => setShowCustomize(false)} />
     </View>
   );
 }

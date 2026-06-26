@@ -14,6 +14,7 @@ import { ShareToChatSheet } from '@/components/ShareToChatSheet';
 import { ReportSheet } from '@/components/ReportSheet';
 import { EditCaptionSheet } from '@/components/EditCaptionSheet';
 import { colors } from '@/lib/theme';
+import { ROUTES_DISPLAY_ENABLED } from '@/lib/features';
 
 const { width } = Dimensions.get('window');
 
@@ -148,6 +149,10 @@ export function FeedItem({
   // Resolve the "routes" count (videos recorded at this place) once the card
   // is active. Best-effort — falls back to 0 (row hidden) on any failure.
   useEffect(() => {
+    if (!ROUTES_DISPLAY_ENABLED) {
+      setRouteCount(0);
+      return;
+    }
     if (!active) return;
     const label = item.location?.label;
     if (!label) {

@@ -1,5 +1,5 @@
 /**
- * DiceBear avatar helpers for the profile customizer (W2).
+ * DiceBear avatar helpers for profile avatars.
  *
  * `default` means "use the user's uploaded photoURL (or fallback person glyph)".
  * The other styles render via DiceBear's HTTPS API using the user's uid as the

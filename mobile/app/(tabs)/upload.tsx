@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -19,6 +19,7 @@ import { useRouter } from 'expo-router';
 import {
   extractHashtags,
   extractMentions,
+  getSavedLocations,
   isValidHashtag,
   normaliseHashtags,
   uploadVideo,
@@ -57,6 +58,7 @@ export default function Upload() {
   const [locationQuery, setLocationQuery] = useState('');
   const [location, setLocation] = useState<VideoLocation | null>(null);
   const [locState, setLocState] = useState<LocationState>({ status: 'idle' });
+  const [savedLocations, setSavedLocations] = useState<VideoLocation[]>([]);
   const [usingCurrent, setUsingCurrent] = useState(false);
 
   const [tagInput, setTagInput] = useState('');
@@ -89,6 +91,12 @@ export default function Upload() {
   const usedChars = totalHashtagsLength(allTags);
   const charsLeft = Math.max(0, HASHTAG_TOTAL_CHAR_LIMIT - usedChars);
   const atTagCap = allTags.length >= HASHTAG_MAX_COUNT;
+
+  useEffect(() => {
+    getSavedLocations()
+      .then(setSavedLocations)
+      .catch(() => setSavedLocations([]));
+  }, []);
 
   function commitTag() {
     const raw = tagInput.replace(/^#+/, '').trim().toLowerCase();
@@ -199,9 +207,9 @@ export default function Upload() {
     }
   }
 
-  function pickResult(r: GeoResult) {
+  function pickResult(r: VideoLocation) {
     setLocation({ latitude: r.latitude, longitude: r.longitude, label: r.label });
-    setLocationQuery(r.label);
+    setLocationQuery(r.label ?? `${r.latitude.toFixed(3)}, ${r.longitude.toFixed(3)}`);
     setLocState({ status: 'idle' });
   }
 
@@ -233,6 +241,11 @@ export default function Upload() {
 
   async function handleUpload() {
     if (!uri) return;
+    if (!location) {
+      Alert.alert('Location required', 'Choose a location before posting.');
+      setStep(1);
+      return;
+    }
     // Pull any @mentions left in the caption into the explicit list too.
     const captionMentions = extractMentions(caption);
     const finalMentions = Array.from(new Set([...mentions, ...captionMentions]));
@@ -437,6 +450,24 @@ export default function Upload() {
                 </Text>
               </Pressable>
 
+              {savedLocations.length > 0 ? (
+                <View style={styles.resultsList}>
+                  <Text style={styles.savedPlacesTitle}>Saved places</Text>
+                  {savedLocations.map((r, i) => (
+                    <Pressable
+                      key={`${r.label ?? 'saved'}-${r.latitude}-${r.longitude}-${i}`}
+                      onPress={() => pickResult(r)}
+                      style={({ pressed }) => [styles.resultRow, pressed && styles.pickerPressed]}
+                    >
+                      <Ionicons name="bookmark-outline" size={14} color={colors.textMuted} />
+                      <Text style={styles.resultText} numberOfLines={1}>
+                        {r.label ?? `${r.latitude.toFixed(3)}, ${r.longitude.toFixed(3)}`}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+
               {locState.status === 'results' && (
                 <View style={styles.resultsList}>
                   {locState.results.map((r, i) => (
@@ -576,10 +607,10 @@ export default function Upload() {
           {step === 1 ? (
             <Pressable
               onPress={() => setStep(2)}
-              disabled={!uri}
+              disabled={!uri || !location}
               style={({ pressed }) => [
                 styles.submit,
-                !uri && styles.submitDisabled,
+                (!uri || !location) && styles.submitDisabled,
                 pressed && styles.submitPressed,
               ]}
             >
@@ -598,11 +629,11 @@ export default function Upload() {
               </Pressable>
               <Pressable
                 onPress={handleUpload}
-                disabled={!uri || progress === 'uploading'}
+                disabled={!uri || !location || progress === 'uploading'}
                 style={({ pressed }) => [
                   styles.submit,
                   styles.submitFlex,
-                  (!uri || progress === 'uploading') && styles.submitDisabled,
+                  (!uri || !location || progress === 'uploading') && styles.submitDisabled,
                   pressed && styles.submitPressed,
                 ]}
               >
@@ -777,6 +808,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     overflow: 'hidden',
+  },
+  savedPlacesTitle: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    textTransform: 'uppercase',
   },
   resultRow: {
     flexDirection: 'row',

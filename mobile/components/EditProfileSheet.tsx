@@ -13,6 +13,7 @@ import { BottomSheetScrollView, BottomSheetTextInput } from '@gorhom/bottom-shee
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import {
+  BIO_MAX,
   claimUsername,
   deleteAccount,
   updateProfile,
@@ -265,11 +266,11 @@ export function EditProfileSheet({
           onChangeText={setBio}
           placeholder="Tell people about you"
           placeholderTextColor={colors.textFaint}
-          maxLength={120}
+          maxLength={BIO_MAX}
           multiline
           style={[styles.input, styles.bio]}
         />
-        <Text style={styles.counter}>{bio.length}/120</Text>
+        <Text style={styles.counter}>{bio.length}/{BIO_MAX}</Text>
 
         <Pressable
           onPress={save}

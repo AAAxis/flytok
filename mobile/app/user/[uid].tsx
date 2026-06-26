@@ -17,22 +17,28 @@ import {
   follow,
   followersCol,
   followingCol,
+  getMyTrips,
   getMyVideos,
   unblockUser,
   unfollow,
+  type Trip,
   type VideoDoc,
 } from '@/lib/firestore';
 import { ensureThread } from '@/lib/messaging';
 import { useUserProfile } from '@/lib/useUserLabel';
 import { VideoGrid } from '@/components/VideoGrid';
+import { ProfileRoutesList } from '@/components/profile/ProfileRoutesList';
+import { RouteIcon } from '@/components/RouteIcon';
 import { FollowListSheet } from '@/components/FollowListSheet';
 import { ReportSheet } from '@/components/ReportSheet';
 import { useBlockedSet } from '@/lib/blockSet';
 import { colors } from '@/lib/theme';
 import { applyTheme, useUserTheme } from '@/lib/theme/userTheme';
 import { dicebearURL } from '@/lib/avatars';
+import { ROUTES_DISPLAY_ENABLED } from '@/lib/features';
 
 const AVATAR_SIZE = 96;
+type Tab = 'posts' | 'routes';
 
 export default function UserProfile() {
   const { uid } = useLocalSearchParams<{ uid: string }>();
@@ -42,9 +48,11 @@ export default function UserProfile() {
   const profile = useUserProfile(uid);
 
   const [videos, setVideos] = useState<VideoDoc[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [counts, setCounts] = useState({ following: 0, followers: 0 });
   const [following, setFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<Tab>('posts');
   const [busy, setBusy] = useState(false);
   const [openingChat, setOpeningChat] = useState(false);
   const [followList, setFollowList] = useState<null | 'following' | 'followers'>(null);
@@ -74,8 +82,12 @@ export default function UserProfile() {
 
   const load = useCallback(async () => {
     if (!uid) return;
-    const list = await getMyVideos(uid).catch(() => []);
+    const [list, routeList] = await Promise.all([
+      getMyVideos(uid).catch(() => []),
+      ROUTES_DISPLAY_ENABLED ? getMyTrips(uid).catch(() => []) : Promise.resolve([]),
+    ]);
     setVideos(list);
+    setTrips(routeList);
   }, [uid]);
 
   useEffect(() => {
@@ -199,6 +211,12 @@ export default function UserProfile() {
 
         <View style={styles.statsCard}>
           <Stat label="Posts" value={videos.length} />
+          {ROUTES_DISPLAY_ENABLED ? (
+            <>
+              <StatDivider />
+              <Stat label="Routes" value={trips.length} />
+            </>
+          ) : null}
           <StatDivider />
           <Stat
             label="Following"
@@ -276,10 +294,30 @@ export default function UserProfile() {
 
         <View style={styles.divider} />
 
+        {ROUTES_DISPLAY_ENABLED ? (
+          <View style={styles.tabsBar}>
+            <TabButton active={tab === 'posts'} icon="grid" label="Posts" onPress={() => setTab('posts')} />
+            <TabButton
+              active={tab === 'routes'}
+              icon="location"
+              label="Routes"
+              onPress={() => setTab('routes')}
+              customIcon={<RouteIcon size={20} />}
+            />
+          </View>
+        ) : null}
+
         {loading ? (
           <View style={styles.loading}>
             <ActivityIndicator color={colors.accent} />
           </View>
+        ) : ROUTES_DISPLAY_ENABLED && tab === 'routes' ? (
+          <ProfileRoutesList
+            trips={trips}
+            ownerUid={uid}
+            canCreate={false}
+            emptyLabel="No routes yet."
+          />
         ) : (
           <VideoGrid
             videos={videos}
@@ -336,6 +374,27 @@ function Stat({
 
 function StatDivider() {
   return <View style={styles.statDivider} />;
+}
+
+function TabButton({
+  active,
+  icon,
+  label,
+  onPress,
+  customIcon,
+}: {
+  active: boolean;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  onPress: () => void;
+  customIcon?: React.ReactNode;
+}) {
+  return (
+    <Pressable onPress={onPress} style={[styles.tabButton, active && styles.tabButtonActive]}>
+      {customIcon ?? <Ionicons name={icon} size={18} color={active ? colors.accent : colors.textDim} />}
+      <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text>
+    </Pressable>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -473,5 +532,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     marginTop: 16,
   },
+  tabsBar: {
+    flexDirection: 'row',
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    gap: 3,
+    borderBottomColor: 'transparent',
+    borderBottomWidth: 2,
+  },
+  tabButtonActive: { borderBottomColor: colors.accent },
+  tabLabel: { color: colors.textDim, fontSize: 11, fontWeight: '600' },
+  tabLabelActive: { color: colors.text },
   loading: { paddingVertical: 60, alignItems: 'center' },
 });

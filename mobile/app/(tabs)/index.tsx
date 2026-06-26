@@ -77,28 +77,30 @@ export default function Feed() {
     const blockedIds = await getBlockedIds();
 
     if (tab === 'following') {
-      if (!me) {
-        setVideos([]);
-        return;
-      }
-      const followingSnap = await followingCol(me.uid).get();
-      const followedIds = followingSnap.docs.map((d) => d.id);
-      if (followedIds.length === 0) {
-        setVideos([]);
-        return;
-      }
+      const recentSnap = await videosCol().orderBy('createdAt', 'desc').limit(150).get();
+      const randomPool = filterPlayable(
+        recentSnap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }))
+          .filter((v) => !blockedIds.has(v.ownerId)),
+      );
+
+      const followedIds = me
+        ? (await followingCol(me.uid).get()).docs.map((d) => d.id)
+        : [];
+
       // Firestore "in" query is limited to 10 IDs — chunk if needed.
       const chunks: string[][] = [];
       for (let i = 0; i < followedIds.length; i += 10) chunks.push(followedIds.slice(i, i + 10));
-      const all: VideoDoc[] = [];
+      const followedVideos: VideoDoc[] = [];
       for (const chunk of chunks) {
         const snap = await videosCol().where('ownerId', 'in', chunk).limit(50).get();
         snap.docs.forEach((d) =>
-          all.push({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }),
+          followedVideos.push({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }),
         );
       }
-      const sorted = filterPlayable(
-        all
+
+      const followed = filterPlayable(
+        followedVideos
           .filter((v) => !blockedIds.has(v.ownerId))
           .sort((a, b) => {
             const ta = a.createdAt?.toMillis?.() ?? 0;
@@ -106,8 +108,16 @@ export default function Feed() {
             return tb - ta;
           }),
       );
-      setVideos(sorted);
-      prefetchVideos(sorted.slice(0, 5).map((v) => v.downloadURL).filter(Boolean));
+
+      const byId = new Map<string, VideoDoc>();
+      followed.forEach((v) => byId.set(v.id, v));
+      shuffleFeed(randomPool).forEach((v) => {
+        if (!byId.has(v.id)) byId.set(v.id, v);
+      });
+
+      const list = [...byId.values()].slice(0, 50);
+      setVideos(list);
+      prefetchVideos(list.slice(0, 5).map((v) => v.downloadURL).filter(Boolean));
       return;
     }
 
@@ -278,6 +288,8 @@ export default function Feed() {
           )}
           pagingEnabled
           snapToInterval={viewportHeight}
+          snapToAlignment="start"
+          disableIntervalMomentum
           getItemLayout={(_, i) => ({
             length: viewportHeight,
             offset: viewportHeight * i,
@@ -340,15 +352,6 @@ export default function Feed() {
         <Ionicons name="search" size={20} color="#fff" />
       </Pressable>
 
-      {/* Trending shortcut — flame, stacked under search */}
-      <Pressable
-        onPress={() => router.push('/trending' as never)}
-        hitSlop={8}
-        style={[styles.cornerFab, styles.trendingFab, { top: topOverlayOffset + 52 }]}
-        accessibilityLabel="Trending places"
-      >
-        <Ionicons name="flame" size={20} color="#fff" />
-      </Pressable>
     </View>
   );
 }
@@ -413,5 +416,4 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
   },
   searchFab: { backgroundColor: 'rgba(0,0,0,0.4)' },
-  trendingFab: { backgroundColor: '#f97316' },
 });

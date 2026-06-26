@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import storage from '@react-native-firebase/storage';
@@ -18,9 +18,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type LatLng } from 'react-native-maps';
+import MapView, { Marker, Polyline, type LatLng } from 'react-native-maps';
 import { colors } from '@/lib/theme';
 import { DARK_MAP_STYLE } from '@/lib/mapStyle';
+import { ROUTES_CREATE_ENABLED } from '@/lib/features';
+import { OpenStreetMapTiles, androidOpenMapType } from '@/components/OpenStreetMapTiles';
+import { AndroidOpenMap, AndroidOpenMarker, AndroidOpenPolyline } from '@/components/AndroidOpenMap';
 
 const INITIAL_REGION = {
   latitude: 31.5,
@@ -50,6 +53,10 @@ export default function CreateTrip() {
   const [uploadingImg, setUploadingImg] = useState(false);
 
   const current = stops[selected];
+
+  useEffect(() => {
+    if (!ROUTES_CREATE_ENABLED) router.replace('/(tabs)/profile' as never);
+  }, [router]);
 
   async function pickStopImage() {
     if (!me) return;
@@ -181,32 +188,65 @@ export default function CreateTrip() {
     <View style={styles.root}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <MapView
-        style={StyleSheet.absoluteFill}
-        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-        customMapStyle={DARK_MAP_STYLE}
-        userInterfaceStyle="dark"
-        initialRegion={INITIAL_REGION}
-        showsCompass={false}
-        toolbarEnabled={false}
-        onPress={(e) => addStop(e.nativeEvent.coordinate)}
-      >
-        {stops.length > 1 ? (
-          <Polyline coordinates={stops} strokeColor={colors.accent} strokeWidth={3} />
-        ) : null}
-        {stops.map((s, i) => (
-          <Marker
-            key={`${s.latitude}-${s.longitude}-${i}`}
-            coordinate={s}
-            anchor={{ x: 0.5, y: 0.5 }}
-            onPress={() => setSelected(i)}
-          >
-            <View style={[styles.pin, i === selected && styles.pinSelected]}>
-              <Text style={styles.pinText}>{i + 1}</Text>
-            </View>
-          </Marker>
-        ))}
-      </MapView>
+      {Platform.OS === 'android' ? (
+        <AndroidOpenMap
+          style={StyleSheet.absoluteFill}
+          initialRegion={INITIAL_REGION}
+          onPress={(e: any) => {
+            const lngLat = e?.nativeEvent?.lngLat;
+            if (!lngLat) return;
+            addStop({ longitude: lngLat[0], latitude: lngLat[1] });
+          }}
+        >
+          <AndroidOpenPolyline
+            id="create-trip"
+            coordinates={stops}
+            strokeColor={colors.accent}
+            strokeWidth={3}
+          />
+          {stops.map((s, i) => (
+            <AndroidOpenMarker
+              key={`${s.latitude}-${s.longitude}-${i}`}
+              id={`stop-${i}`}
+              coordinate={s}
+              anchor="center"
+              onPress={() => setSelected(i)}
+            >
+              <View style={[styles.pin, i === selected && styles.pinSelected]}>
+                <Text style={styles.pinText}>{i + 1}</Text>
+              </View>
+            </AndroidOpenMarker>
+          ))}
+        </AndroidOpenMap>
+      ) : (
+        <MapView
+          style={StyleSheet.absoluteFill}
+          mapType={androidOpenMapType}
+          customMapStyle={DARK_MAP_STYLE}
+          userInterfaceStyle="dark"
+          initialRegion={INITIAL_REGION}
+          showsCompass={false}
+          toolbarEnabled={false}
+          onPress={(e) => addStop(e.nativeEvent.coordinate)}
+        >
+          <OpenStreetMapTiles />
+          {stops.length > 1 ? (
+            <Polyline coordinates={stops} strokeColor={colors.accent} strokeWidth={3} />
+          ) : null}
+          {stops.map((s, i) => (
+            <Marker
+              key={`${s.latitude}-${s.longitude}-${i}`}
+              coordinate={s}
+              anchor={{ x: 0.5, y: 0.5 }}
+              onPress={() => setSelected(i)}
+            >
+              <View style={[styles.pin, i === selected && styles.pinSelected]}>
+                <Text style={styles.pinText}>{i + 1}</Text>
+              </View>
+            </Marker>
+          ))}
+        </MapView>
+      )}
 
       {/* Top bar — back returns to the name step */}
       <View style={[styles.topBar, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">

@@ -15,10 +15,12 @@ export function VideoGrid({
   videos,
   emptyLabel,
   onPress,
+  onLongPress,
 }: {
   videos: VideoDoc[];
   emptyLabel: string;
   onPress?: (video: VideoDoc) => void;
+  onLongPress?: (video: VideoDoc) => void;
 }) {
   if (videos.length === 0) {
     return (
@@ -32,13 +34,26 @@ export function VideoGrid({
   return (
     <View style={styles.grid}>
       {videos.map((v) => (
-        <GridTile key={v.id} video={v} onPress={() => onPress?.(v)} />
+        <GridTile
+          key={v.id}
+          video={v}
+          onPress={() => onPress?.(v)}
+          onLongPress={onLongPress ? () => onLongPress(v) : undefined}
+        />
       ))}
     </View>
   );
 }
 
-function GridTile({ video, onPress }: { video: VideoDoc; onPress?: () => void }) {
+function GridTile({
+  video,
+  onPress,
+  onLongPress,
+}: {
+  video: VideoDoc;
+  onPress?: () => void;
+  onLongPress?: () => void;
+}) {
   const [failed, setFailed] = useState(false);
   const player = useVideoPlayer(video.downloadURL, (p) => {
     p.muted = true;
@@ -57,7 +72,7 @@ function GridTile({ video, onPress }: { video: VideoDoc; onPress?: () => void })
   if (failed) return null;
 
   return (
-    <Pressable onPress={onPress} style={styles.tile}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} style={styles.tile}>
       <VideoView
         player={player}
         style={styles.tileVideo}

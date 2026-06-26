@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import Purchases, {
+  LOG_LEVEL,
   type PurchasesOffering,
   type PurchasesPackage,
 } from 'react-native-purchases';
@@ -13,6 +14,34 @@ const IOS_API_KEY = 'appl_qfENhDaGMHVrcqSehjJeaMeDowb';
 const ANDROID_API_KEY = 'goog_HRBCrWnmFKeeGUYuesbgoblDjyC';
 
 let configured = false;
+let logHandlerInstalled = false;
+
+function isExpectedBillingUnavailable(message: string) {
+  return (
+    message.includes('BILLING_UNAVAILABLE') ||
+    message.includes('Billing service unavailable') ||
+    message.includes('Billing is not available') ||
+    message.includes('PurchaseNotAllowedError') ||
+    message.includes('Error fetching offerings')
+  );
+}
+
+function installPurchasesLogHandler() {
+  if (logHandlerInstalled) return;
+  Purchases.setLogHandler((level, message) => {
+    const text = `[RevenueCat] ${message}`;
+    if (level === LOG_LEVEL.ERROR) {
+      if (isExpectedBillingUnavailable(message)) {
+        console.warn(text);
+      } else {
+        console.warn(text);
+      }
+      return;
+    }
+    if (level === LOG_LEVEL.WARN) console.warn(text);
+  });
+  logHandlerInstalled = true;
+}
 
 /** Configure RevenueCat once at app start. */
 export function configurePurchases() {
@@ -23,6 +52,8 @@ export function configurePurchases() {
   });
   if (!apiKey) return;
   try {
+    installPurchasesLogHandler();
+    Purchases.setLogLevel(LOG_LEVEL.WARN).catch(() => {});
     Purchases.configure({ apiKey });
     configured = true;
   } catch (err) {
@@ -39,7 +70,6 @@ export async function setPurchasesUser(uid: string | null) {
   if (!configured) return;
   try {
     if (uid) await Purchases.logIn(uid);
-    else await Purchases.logOut();
   } catch (err) {
     console.warn('[purchases] identity update failed', err);
   }
@@ -51,14 +81,19 @@ export async function setPurchasesUser(uid: string | null) {
  * offering is also the one whose paywall is presented by default.
  */
 export async function getTopupOffering(): Promise<PurchasesOffering | null> {
-  const offerings = await Purchases.getOfferings();
-  return (
-    offerings.current ??
-    offerings.all['Base'] ??
-    offerings.all['topups'] ??
-    Object.values(offerings.all)[0] ??
-    null
-  );
+  try {
+    const offerings = await Purchases.getOfferings();
+    return (
+      offerings.current ??
+      offerings.all['Base'] ??
+      offerings.all['topups'] ??
+      Object.values(offerings.all)[0] ??
+      null
+    );
+  } catch (err) {
+    console.warn('[purchases] top-up offerings unavailable', err);
+    return null;
+  }
 }
 
 export async function getTopupPackages(): Promise<PurchasesPackage[]> {
@@ -78,9 +113,10 @@ export async function purchasePackage(pkg: PurchasesPackage): Promise<void> {
  */
 export async function presentTopupPaywall(): Promise<PAYWALL_RESULT> {
   const offering = await getTopupOffering();
-  return offering
-    ? RevenueCatUI.presentPaywall({ offering })
-    : RevenueCatUI.presentPaywall();
+  if (!offering) {
+    throw new Error('Top-ups are not available on this device.');
+  }
+  return RevenueCatUI.presentPaywall({ offering });
 }
 
 /**

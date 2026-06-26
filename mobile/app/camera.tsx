@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import auth from '@react-native-firebase/auth';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import {
@@ -22,18 +23,30 @@ import {
 } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { extractHashtags, extractMentions, uploadVideo, type VideoLocation } from '@/lib/firestore';
-import { geocodeAddress, getCountryLocation, getCurrentLocationLabeled, type GeoResult } from '@/lib/geocode';
+import {
+  extractHashtags,
+  extractMentions,
+  getSavedLocations,
+  uploadVideo,
+  type VideoLocation,
+} from '@/lib/firestore';
+import { geocodeAddress, getCurrentLocationLabeled, type GeoResult } from '@/lib/geocode';
 import { colors } from '@/lib/theme';
 
 type Mode = 'camera' | 'review';
+
+const MIN_RECORDING_MS = 1200;
 
 export default function CameraScreen() {
   const router = useRouter();
   const [camPerm, requestCamPerm] = useCameraPermissions();
   const [micPerm, requestMicPerm] = useMicrophonePermissions();
   const cameraRef = useRef<CameraView>(null);
+  const recordingStartedAtRef = useRef(0);
+  const stopRequestedRef = useRef(false);
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [facing, setFacing] = useState<'back' | 'front'>('back');
+  const [cameraReady, setCameraReady] = useState(false);
   const [recording, setRecording] = useState(false);
   const [uri, setUri] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
@@ -47,6 +60,11 @@ export default function CameraScreen() {
   useEffect(() => {
     if (micPerm && !micPerm.granted && micPerm.canAskAgain) requestMicPerm();
   }, [micPerm, requestMicPerm]);
+  useEffect(() => {
+    return () => {
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+    };
+  }, []);
 
   async function pickFromLibrary() {
     try {
@@ -83,12 +101,60 @@ export default function CameraScreen() {
   }
 
   async function startRecording() {
-    if (!cameraRef.current || recording) return;
+    if (Platform.OS === 'android') {
+      await recordWithSystemCamera();
+      return;
+    }
+    if (!cameraRef.current || !cameraReady || recording) return;
+    if (stopTimerRef.current) {
+      clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = null;
+    }
+    stopRequestedRef.current = false;
+    recordingStartedAtRef.current = Date.now();
     setRecording(true);
     try {
       const result = await cameraRef.current.recordAsync({ maxDuration: 60 });
       if (result?.uri) {
         setUri(result.uri);
+        setMode('review');
+      }
+    } catch (err: any) {
+      const message = err?.message ?? 'Try again.';
+      const stoppedTooEarly = /stopped before any data could be produced/i.test(message);
+      if (!stoppedTooEarly) {
+        Alert.alert('Recording failed', message);
+      }
+    } finally {
+      if (stopTimerRef.current) {
+        clearTimeout(stopTimerRef.current);
+        stopTimerRef.current = null;
+      }
+      stopRequestedRef.current = false;
+      setRecording(false);
+    }
+  }
+
+  async function recordWithSystemCamera() {
+    if (recording) return;
+    setRecording(true);
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          'Camera access needed',
+          'Enable Camera access for Roamerz in Settings to record a video.',
+        );
+        return;
+      }
+      const res = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        videoMaxDuration: 60,
+        quality: 1,
+        cameraType: facing === 'front' ? ImagePicker.CameraType.front : ImagePicker.CameraType.back,
+      });
+      if (!res.canceled && res.assets[0]?.uri) {
+        setUri(res.assets[0].uri);
         setMode('review');
       }
     } catch (err: any) {
@@ -99,23 +165,33 @@ export default function CameraScreen() {
   }
 
   function stopRecording() {
-    cameraRef.current?.stopRecording();
+    if (!recording || stopRequestedRef.current) return;
+    stopRequestedRef.current = true;
+    const elapsed = Date.now() - recordingStartedAtRef.current;
+    const remaining = Math.max(0, MIN_RECORDING_MS - elapsed);
+    const stop = () => {
+      stopTimerRef.current = null;
+      cameraRef.current?.stopRecording();
+    };
+    if (remaining > 0) {
+      stopTimerRef.current = setTimeout(stop, remaining);
+    } else {
+      stop();
+    }
   }
 
   async function post() {
     if (!uri) return;
+    if (!location) {
+      Alert.alert('Location required', 'Choose a location before posting.');
+      return;
+    }
     setPosting(true);
     try {
-      // If the user didn't pick a place, fall back to a country-level pin so
-      // the upload still appears on the Map.
-      let finalLocation = location;
-      if (!finalLocation) {
-        finalLocation = await getCountryLocation();
-      }
       await uploadVideo({
         uri,
         caption,
-        location: finalLocation,
+        location,
         hashtags: extractHashtags(caption),
         mentions: extractMentions(caption),
       });
@@ -185,13 +261,19 @@ export default function CameraScreen() {
   return (
     <View style={styles.cameraScreen}>
       <Stack.Screen options={{ headerShown: false }} />
-      <CameraView
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        facing={facing}
-        mode="video"
-        videoQuality="1080p"
-      />
+      {Platform.OS === 'android' ? (
+        <View style={[StyleSheet.absoluteFill, styles.androidCameraFallback]} />
+      ) : (
+        <CameraView
+          ref={cameraRef}
+          style={StyleSheet.absoluteFill}
+          facing={facing}
+          mode="video"
+          videoQuality="1080p"
+          onCameraReady={() => setCameraReady(true)}
+          onMountError={(e) => Alert.alert('Camera unavailable', e.message ?? 'Try again.')}
+        />
+      )}
 
 
       <SafeAreaView style={styles.cameraOverlay} edges={['top', 'bottom']} pointerEvents="box-none">
@@ -200,7 +282,10 @@ export default function CameraScreen() {
             <Ionicons name="close" size={28} color="#fff" />
           </Pressable>
           <Pressable
-            onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+            onPress={() => {
+              setCameraReady(false);
+              setFacing((f) => (f === 'back' ? 'front' : 'back'));
+            }}
             hitSlop={10}
             style={styles.iconButton}
           >
@@ -215,9 +300,13 @@ export default function CameraScreen() {
           </Pressable>
 
           <Pressable
-            onPressIn={startRecording}
-            onPressOut={stopRecording}
-            style={[styles.recordButton, recording && styles.recordButtonActive]}
+            onPress={recording ? stopRecording : startRecording}
+            disabled={Platform.OS !== 'android' && !cameraReady && !recording}
+            style={[
+              styles.recordButton,
+              recording && styles.recordButtonActive,
+              Platform.OS !== 'android' && !cameraReady && !recording && styles.recordButtonDisabled,
+            ]}
           >
             <View style={[styles.recordInner, recording && styles.recordInnerActive]} />
           </Pressable>
@@ -356,11 +445,11 @@ function ReviewScreen({
             </Pressable>
             <Pressable
               onPress={onPost}
-              disabled={posting}
+              disabled={posting || !location}
               style={({ pressed }) => [
                 styles.postButton,
                 styles.postButtonFlex,
-                posting && styles.postDisabled,
+                (posting || !location) && styles.postDisabled,
                 pressed && styles.postPressed,
               ]}
             >
@@ -405,8 +494,16 @@ function LocationPickerModal({
 }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GeoResult[]>([]);
+  const [savedLocations, setSavedLocations] = useState<VideoLocation[]>([]);
   const [searching, setSearching] = useState(false);
   const [usingCurrent, setUsingCurrent] = useState(false);
+
+  useEffect(() => {
+    if (!visible || !auth().currentUser) return;
+    getSavedLocations()
+      .then(setSavedLocations)
+      .catch(() => setSavedLocations([]));
+  }, [visible]);
 
   async function search() {
     const q = query.trim();
@@ -486,6 +583,24 @@ function LocationPickerModal({
               </Text>
             </Pressable>
 
+            {savedLocations.length > 0 ? (
+              <View style={styles.locSavedList}>
+                <Text style={styles.locSavedTitle}>Saved places</Text>
+                {savedLocations.map((r, i) => (
+                  <Pressable
+                    key={`${r.label ?? 'saved'}-${r.latitude}-${r.longitude}-${i}`}
+                    onPress={() => onPick(r)}
+                    style={styles.locResult}
+                  >
+                    <Ionicons name="bookmark-outline" size={18} color={colors.textMuted} />
+                    <Text style={styles.locResultText} numberOfLines={2}>
+                      {r.label ?? `${r.latitude.toFixed(3)}, ${r.longitude.toFixed(3)}`}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+
             {results.map((r, i) => (
               <Pressable
                 key={`${r.latitude}-${r.longitude}-${i}`}
@@ -532,6 +647,7 @@ const styles = StyleSheet.create({
   altButtonText: { color: colors.accent, fontSize: 14 },
 
   cameraScreen: { flex: 1, backgroundColor: '#000' },
+  androidCameraFallback: { backgroundColor: '#000' },
   cameraOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between' },
   topBar: {
     flexDirection: 'row',
@@ -559,6 +675,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   recordButtonActive: { borderColor: '#ef4444' },
+  recordButtonDisabled: { opacity: 0.45 },
   recordInner: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#ef4444' },
   recordInnerActive: { width: 30, height: 30, borderRadius: 6 },
 
@@ -660,6 +777,21 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   locCurrentText: { color: colors.accent, fontSize: 14, fontWeight: '500' },
+  locSavedList: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  locSavedTitle: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    textTransform: 'uppercase',
+  },
   locResult: {
     flexDirection: 'row',
     alignItems: 'center',

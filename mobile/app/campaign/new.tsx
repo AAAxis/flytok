@@ -27,6 +27,7 @@ import {
   topupTransactionIds,
 } from '@/lib/purchases';
 import { colors } from '@/lib/theme';
+import { ROUTES_CREATE_ENABLED } from '@/lib/features';
 
 const BUDGET_PRESETS = [500, 1000, 2500, 5000]; // cents
 const DURATIONS = [3, 7, 14, 30]; // days
@@ -170,10 +171,17 @@ export default function NewCampaign() {
           {/* Trip picker */}
           <Text style={styles.sectionTitle}>Promote which trip?</Text>
           {trips.length === 0 ? (
-            <Pressable onPress={() => router.push('/create-trip' as never)} style={styles.emptyTrip}>
-              <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
-              <Text style={styles.emptyTripText}>No trips yet — create one first</Text>
-            </Pressable>
+            ROUTES_CREATE_ENABLED ? (
+              <Pressable onPress={() => router.push('/create-trip' as never)} style={styles.emptyTrip}>
+                <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+                <Text style={styles.emptyTripText}>No trips yet — create one first</Text>
+              </Pressable>
+            ) : (
+              <View style={styles.emptyTrip}>
+                <Ionicons name="lock-closed-outline" size={18} color={colors.textDim} />
+                <Text style={styles.emptyTripText}>Trip routes are not available right now.</Text>
+              </View>
+            )
           ) : (
             trips.map((t) => {
               const sel = t.id === tripId;

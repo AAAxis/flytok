@@ -26,8 +26,7 @@ function toDocs(snap: Snap): VideoDoc[] {
 
 /**
  * Trending places — same grid look as the Saved tab, but ranked by
- * engagement instead of the viewer's own saves. Reached from the flame
- * shortcut on the feed.
+ * engagement instead of the viewer's own saves.
  */
 export default function Trending() {
   const router = useRouter();

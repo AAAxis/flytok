@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import { Marker, type Region } from 'react-native-maps';
 import ClusteredMapView from 'react-native-map-clustering';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +17,8 @@ import { colors } from '@/lib/theme';
 import { DARK_MAP_STYLE } from '@/lib/mapStyle';
 import { PlaceCard } from '@/components/PlaceCard';
 import { MapCategoriesSheet, type MapCategory } from '@/components/MapCategoriesSheet';
+import { OpenStreetMapTiles, androidOpenMapType } from '@/components/OpenStreetMapTiles';
+import { AndroidOpenMap, AndroidOpenMarker } from '@/components/AndroidOpenMap';
 
 const FALLBACK = { latitude: 37.7749, longitude: -122.4194 };
 const LOCATION_TIMEOUT_MS = 6000;
@@ -270,44 +272,66 @@ export default function MapScreen() {
 
   return (
     <View style={styles.flex}>
-      <ClusteredMapView
-        // Force-remount on retry so the underlying GoogleMap re-initialises
-        // and re-runs the Maps SDK auth handshake.
-        key={mapKey}
-        ref={mapRef}
-        style={styles.flex}
-        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-        showsUserLocation={locState.kind === 'granted'}
-        showsMyLocationButton={false}
-        showsCompass={false}
-        // iOS Apple Maps gets dark via userInterfaceStyle; Android Google Maps
-        // gets it via customMapStyle. Both give us a consistent dark canvas.
-        userInterfaceStyle="dark"
-        customMapStyle={DARK_MAP_STYLE}
-        initialRegion={initialRegion}
-        clusterColor={colors.accent}
-        clusterTextColor={colors.bg}
-        radius={Platform.OS === 'ios' ? 40 : 60}
-        animationEnabled={Platform.OS === 'ios'}
-        spiralEnabled={false}
-        onMapReady={() => setMapReady(true)}
-      >
-        {places.map((p) => (
-          <Marker
-            key={p.key}
-            coordinate={{ latitude: p.latitude, longitude: p.longitude }}
-            onPress={() => {
-              setSelectedKey(p.key);
-              setSheetOpen(true);
-            }}
-            tracksViewChanges={false}
-            anchor={{ x: 0.5, y: 0.5 }}
-            accessibilityLabel={`${p.label}, ${p.videos.length} ${p.videos.length === 1 ? 'video' : 'videos'}`}
-          >
-            <PlaceMarker place={p} />
-          </Marker>
-        ))}
-      </ClusteredMapView>
+      {Platform.OS === 'android' ? (
+        <AndroidOpenMap
+          key={mapKey}
+          ref={mapRef}
+          style={styles.flex}
+          initialRegion={initialRegion}
+          onMapReady={() => setMapReady(true)}
+        >
+          {places.map((p) => (
+            <AndroidOpenMarker
+              key={p.key}
+              id={p.key}
+              coordinate={{ latitude: p.latitude, longitude: p.longitude }}
+              anchor="center"
+              onPress={() => {
+                setSelectedKey(p.key);
+                setSheetOpen(true);
+              }}
+            >
+              <PlaceMarker place={p} />
+            </AndroidOpenMarker>
+          ))}
+        </AndroidOpenMap>
+      ) : (
+        <ClusteredMapView
+          key={mapKey}
+          ref={mapRef}
+          style={styles.flex}
+          mapType={androidOpenMapType}
+          showsUserLocation={locState.kind === 'granted'}
+          showsMyLocationButton={false}
+          showsCompass={false}
+          userInterfaceStyle="dark"
+          customMapStyle={DARK_MAP_STYLE}
+          initialRegion={initialRegion}
+          clusterColor={colors.accent}
+          clusterTextColor={colors.bg}
+          radius={40}
+          animationEnabled
+          spiralEnabled={false}
+          onMapReady={() => setMapReady(true)}
+        >
+          <OpenStreetMapTiles />
+          {places.map((p) => (
+            <Marker
+              key={p.key}
+              coordinate={{ latitude: p.latitude, longitude: p.longitude }}
+              onPress={() => {
+                setSelectedKey(p.key);
+                setSheetOpen(true);
+              }}
+              tracksViewChanges={false}
+              anchor={{ x: 0.5, y: 0.5 }}
+              accessibilityLabel={`${p.label}, ${p.videos.length} ${p.videos.length === 1 ? 'video' : 'videos'}`}
+            >
+              <PlaceMarker place={p} />
+            </Marker>
+          ))}
+        </ClusteredMapView>
+      )}
 
       {/* Floating top controls — filter (left) and recenter (right). Sit on
           top of the map and visually mirror the screenshot reference. */}

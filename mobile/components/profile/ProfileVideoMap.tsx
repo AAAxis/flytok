@@ -12,11 +12,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useRouter } from 'expo-router';
-import { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import { Marker, type Region } from 'react-native-maps';
 import ClusteredMapView from 'react-native-map-clustering';
 import type { VideoDoc } from '@/lib/firestore';
 import { colors } from '@/lib/theme';
 import { DARK_MAP_STYLE } from '@/lib/mapStyle';
+import { OpenStreetMapTiles, androidOpenMapType } from '@/components/OpenStreetMapTiles';
+import { AndroidOpenMap, AndroidOpenMarker } from '@/components/AndroidOpenMap';
 
 // Warm gold for the active pin so it reads as "selected" against the blue
 // resting pins, matching the design reference.
@@ -130,66 +132,100 @@ export function ProfileVideoMap({ videos, loading, onPressVideo }: Props) {
 
   return (
     <View style={styles.mapWrap}>
-      <ClusteredMapView
-        ref={mapRef}
-        style={StyleSheet.absoluteFill}
-        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-        customMapStyle={DARK_MAP_STYLE}
-        userInterfaceStyle="dark"
-        initialRegion={initialRegion ?? undefined}
-        showsUserLocation={false}
-        showsMyLocationButton={false}
-        showsCompass={false}
-        toolbarEnabled={false}
-        clusterColor={colors.accent}
-        clusterTextColor={colors.bg}
-        radius={Platform.OS === 'ios' ? 40 : 60}
-        animationEnabled={Platform.OS === 'ios'}
-        spiralEnabled={false}
-        // Tapping empty map dismisses the active place card. A marker tap also
-        // fires this on some platforms — ignore it so the card stays open.
-        onPress={(e) => {
-          if (e.nativeEvent?.action === 'marker-press') return;
-          setSelectedId(null);
-        }}
-        onMapReady={() => {
-          setMapReady(true);
-          // Fit to the bounding box of the user's markers. The wrapper forwards
-          // the underlying MapView ref, so `fitToCoordinates` is available.
-          if (located.length > 1 && mapRef.current?.fitToCoordinates) {
-            const coords = located.map((v) => ({
-              latitude: v.location!.latitude,
-              longitude: v.location!.longitude,
-            }));
-            mapRef.current.fitToCoordinates(coords, {
-              edgePadding: { top: 60, right: 60, bottom: 60, left: 60 },
-              animated: false,
-            });
-          }
-        }}
-      >
-        {located.map((v) => {
-          const isSelected = v.id === selectedId;
-          return (
-            <Marker
-              // Encode selection into the key so the custom view re-renders
-              // (markers don't track view changes after first paint).
-              key={`${v.id}:${isSelected ? 'sel' : 'def'}`}
-              coordinate={{
+      {Platform.OS === 'android' ? (
+        <AndroidOpenMap
+          ref={mapRef}
+          style={StyleSheet.absoluteFill}
+          initialRegion={initialRegion ?? undefined}
+          onPress={() => setSelectedId(null)}
+          onMapReady={() => {
+            setMapReady(true);
+            if (located.length > 1 && mapRef.current?.fitToCoordinates) {
+              const coords = located.map((v) => ({
                 latitude: v.location!.latitude,
                 longitude: v.location!.longitude,
-              }}
-              onPress={() => setSelectedId(v.id)}
-              tracksViewChanges={false}
-              anchor={{ x: 0.5, y: 1 }}
-              zIndex={isSelected ? 999 : 1}
-              accessibilityLabel={v.location?.label || v.caption || 'My video'}
-            >
-              <PlaceMarker selected={isSelected} />
-            </Marker>
-          );
-        })}
-      </ClusteredMapView>
+              }));
+              mapRef.current.fitToCoordinates(coords, {
+                edgePadding: { top: 60, right: 60, bottom: 60, left: 60 },
+                animated: false,
+              });
+            }
+          }}
+        >
+          {located.map((v) => {
+            const isSelected = v.id === selectedId;
+            return (
+              <AndroidOpenMarker
+                key={`${v.id}:${isSelected ? 'sel' : 'def'}`}
+                id={v.id}
+                coordinate={{
+                  latitude: v.location!.latitude,
+                  longitude: v.location!.longitude,
+                }}
+                onPress={() => setSelectedId(v.id)}
+              >
+                <PlaceMarker selected={isSelected} />
+              </AndroidOpenMarker>
+            );
+          })}
+        </AndroidOpenMap>
+      ) : (
+        <ClusteredMapView
+          ref={mapRef}
+          style={StyleSheet.absoluteFill}
+          mapType={androidOpenMapType}
+          customMapStyle={DARK_MAP_STYLE}
+          userInterfaceStyle="dark"
+          initialRegion={initialRegion ?? undefined}
+          showsUserLocation={false}
+          showsMyLocationButton={false}
+          showsCompass={false}
+          toolbarEnabled={false}
+          clusterColor={colors.accent}
+          clusterTextColor={colors.bg}
+          radius={40}
+          animationEnabled
+          spiralEnabled={false}
+          onPress={(e) => {
+            if (e.nativeEvent?.action === 'marker-press') return;
+            setSelectedId(null);
+          }}
+          onMapReady={() => {
+            setMapReady(true);
+            if (located.length > 1 && mapRef.current?.fitToCoordinates) {
+              const coords = located.map((v) => ({
+                latitude: v.location!.latitude,
+                longitude: v.location!.longitude,
+              }));
+              mapRef.current.fitToCoordinates(coords, {
+                edgePadding: { top: 60, right: 60, bottom: 60, left: 60 },
+                animated: false,
+              });
+            }
+          }}
+        >
+          <OpenStreetMapTiles />
+          {located.map((v) => {
+            const isSelected = v.id === selectedId;
+            return (
+              <Marker
+                key={`${v.id}:${isSelected ? 'sel' : 'def'}`}
+                coordinate={{
+                  latitude: v.location!.latitude,
+                  longitude: v.location!.longitude,
+                }}
+                onPress={() => setSelectedId(v.id)}
+                tracksViewChanges={false}
+                anchor={{ x: 0.5, y: 1 }}
+                zIndex={isSelected ? 999 : 1}
+                accessibilityLabel={v.location?.label || v.caption || 'My video'}
+              >
+                <PlaceMarker selected={isSelected} />
+              </Marker>
+            );
+          })}
+        </ClusteredMapView>
+      )}
 
       {selected ? (
         <VideoPlaceCard
