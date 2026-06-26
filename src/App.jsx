@@ -10,7 +10,6 @@ import {
 } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import Layout from '@/Layout';
-import Landing from '@/pages/marketing/Landing';
 import Privacy from '@/pages/marketing/Privacy';
 import Terms from '@/pages/marketing/Terms';
 import PublicFeed from '@/pages/marketing/Feed';
@@ -66,8 +65,8 @@ function AppRoutes() {
 
   return (
     <Routes>
-      {/* Public marketing */}
-      <Route path="/" element={<Landing />} />
+      {/* Public pages */}
+      <Route path="/" element={<Navigate to="/admin" replace />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/feed" element={<PublicFeed />} />

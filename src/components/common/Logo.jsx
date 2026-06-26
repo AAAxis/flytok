@@ -1,6 +1,6 @@
 import React from 'react';
 
-/** Roamerz bird symbol — same glyph as the favicon / ScrollBird. */
+/** Roamerz bird symbol, matching the favicon. */
 function Bird({ className }) {
   return (
     <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
