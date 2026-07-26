@@ -1,4 +1,4 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,7 +6,7 @@ import { useUnreadBadge } from '@/lib/messaging';
 
 /**
  * Shared top bar rendered once by the tabs layout, so the black brand bar
- * (notifications · Roamerz · menu) is identical across every tab.
+ * (notifications · centered bird · menu) is identical across every tab.
  *
  * On detail screens nested inside the tabs (e.g. the post viewer), the left
  * notifications button is swapped for a Back button.
@@ -50,7 +50,6 @@ export function AppHeader() {
           style={styles.logo}
           resizeMode="contain"
         />
-        <Text style={styles.name}>Roamerz</Text>
       </View>
 
       <Pressable
@@ -75,9 +74,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   icon: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  logo: { width: 26, height: 26 },
-  name: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  brand: { alignItems: 'center', justifyContent: 'center' },
+  logo: { width: 44, height: 44 },
   dot: {
     position: 'absolute',
     top: 4,

@@ -11,8 +11,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Marker, type Region } from 'react-native-maps';
 import ClusteredMapView from 'react-native-map-clustering';
 import * as Location from 'expo-location';
+import auth from '@react-native-firebase/auth';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { getBlockedIds, videosCol, type VideoDoc } from '@/lib/firestore';
+import { getBlockedIds, savesCol, videosCol, type VideoDoc } from '@/lib/firestore';
 import { colors } from '@/lib/theme';
 import { DARK_MAP_STYLE } from '@/lib/mapStyle';
 import { PlaceCard } from '@/components/PlaceCard';
@@ -23,6 +25,23 @@ import { AndroidOpenMap, AndroidOpenMarker } from '@/components/AndroidOpenMap';
 const FALLBACK = { latitude: 37.7749, longitude: -122.4194 };
 const LOCATION_TIMEOUT_MS = 6000;
 const MAP_READY_TIMEOUT_MS = 8000;
+const SAVED_CATEGORY = '__saved__';
+const PRIMARY_CATEGORIES = [
+  'Hiking',
+  'Beaches',
+  'Nightlife',
+  'Clubs',
+  'Surfing',
+  'Shopping',
+  'Gems',
+  'Camping',
+  'Culture',
+  'Markets',
+  'Food',
+  'Rivers',
+  'Ski',
+  'Lakes',
+] as const;
 
 type Place = {
   // Composite key: lowercased label + 3-decimal lat/lng so two videos with
@@ -46,6 +65,12 @@ type LocationState =
   | { kind: 'fallback' };
 
 export default function MapScreen() {
+  const me = auth().currentUser;
+  const { latitude, longitude, videoId } = useLocalSearchParams<{
+    latitude?: string;
+    longitude?: string;
+    videoId?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const [locState, setLocState] = useState<LocationState>({ kind: 'pending' });
   const [videos, setVideos] = useState<VideoDoc[]>([]);
@@ -54,11 +79,13 @@ export default function MapScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [savedVideoIds, setSavedVideoIds] = useState<Set<string>>(() => new Set());
   const [mapReady, setMapReady] = useState(false);
   const [mapTimedOut, setMapTimedOut] = useState(false);
   // Bumped to force-remount the map widget when the user retries.
   const [mapKey, setMapKey] = useState(0);
   const mapRef = useRef<any>(null);
+  const handledTargetRef = useRef<string | null>(null);
 
   // Resolve location (or fall back) without ever blocking the UI forever.
   useEffect(() => {
@@ -133,6 +160,17 @@ export default function MapScreen() {
     loadVideos();
   }, [loadVideos]);
 
+  useEffect(() => {
+    if (!me) {
+      setSavedVideoIds(new Set());
+      return;
+    }
+    return savesCol(me.uid).onSnapshot(
+      (snap) => setSavedVideoIds(new Set(snap.docs.map((doc) => doc.id))),
+      () => setSavedVideoIds(new Set()),
+    );
+  }, [me]);
+
   // Aggregate hashtags across visible videos so the categories sheet only
   // ever surfaces tags that actually exist on the map.
   const categories = useMemo<MapCategory[]>(() => {
@@ -147,10 +185,27 @@ export default function MapScreen() {
         counts.set(norm, (counts.get(norm) ?? 0) + 1);
       }
     }
-    return Array.from(counts.entries())
+    const primaryKeys = new Set(PRIMARY_CATEGORIES.map((label) => label.toLowerCase()));
+    const primary: MapCategory[] = PRIMARY_CATEGORIES.map((label) => ({
+      tag: label.toLowerCase(),
+      label,
+      count: counts.get(label.toLowerCase()) ?? 0,
+    }));
+    const additional = Array.from(counts.entries())
+      .filter(([tag]) => !primaryKeys.has(tag))
       .map(([tag, count]) => ({ tag, count }))
       .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
-  }, [videos]);
+    return [
+      {
+        tag: SAVED_CATEGORY,
+        label: 'Saved Videos',
+        count: videos.filter((video) => savedVideoIds.has(video.id)).length,
+        tone: 'saved' as const,
+      },
+      ...primary,
+      ...additional,
+    ];
+  }, [savedVideoIds, videos]);
 
   // Drop the active filter if its tag is no longer on the map (e.g. after
   // an upload or a fresh query) so the user isn't stuck staring at zero pins.
@@ -163,12 +218,15 @@ export default function MapScreen() {
 
   const filteredVideos = useMemo(() => {
     if (!selectedCategory) return videos;
+    if (selectedCategory === SAVED_CATEGORY) {
+      return videos.filter((video) => savedVideoIds.has(video.id));
+    }
     return videos.filter((v) =>
       (v.hashtags ?? []).some(
         (t) => typeof t === 'string' && t.toLowerCase() === selectedCategory,
       ),
     );
-  }, [videos, selectedCategory]);
+  }, [savedVideoIds, videos, selectedCategory]);
 
   // Group by lowercased label + ~110m geohash so duplicate captions in
   // different places stay separate.
@@ -200,6 +258,38 @@ export default function MapScreen() {
     () => (selectedKey ? places.find((p) => p.key === selectedKey) ?? null : null),
     [places, selectedKey],
   );
+
+  // Feed/profile map buttons deep-link into this persistent tab. Once both
+  // the map and its markers are ready, focus the exact pin and open its card.
+  useEffect(() => {
+    if (!mapReady || places.length === 0) return;
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const targetToken = `${videoId ?? ''}|${lat}|${lng}`;
+    if (handledTargetRef.current === targetToken) return;
+    const place =
+      places.find((candidate) => candidate.videos.some((video) => video.id === videoId)) ??
+      places.reduce<Place | null>((best, candidate) => {
+        if (!best) return candidate;
+        const bestDistance = Math.hypot(best.latitude - lat, best.longitude - lng);
+        const nextDistance = Math.hypot(candidate.latitude - lat, candidate.longitude - lng);
+        return nextDistance < bestDistance ? candidate : best;
+      }, null);
+    if (!place) return;
+    handledTargetRef.current = targetToken;
+    setSelectedKey(place.key);
+    setSheetOpen(true);
+    mapRef.current?.animateToRegion?.(
+      {
+        latitude: place.latitude,
+        longitude: place.longitude,
+        latitudeDelta: 0.04,
+        longitudeDelta: 0.04,
+      },
+      450,
+    );
+  }, [latitude, longitude, mapReady, places, videoId]);
 
   // Detect Maps SDK auth failure / blank-canvas state. If `onMapReady` never
   // fires within MAP_READY_TIMEOUT_MS, surface a banner so users aren't
@@ -353,7 +443,7 @@ export default function MapScreen() {
             accessibilityLabel={`Active category #${selectedCategory}, tap to change`}
           >
             <Text style={styles.activeChipText} numberOfLines={1}>
-              #{selectedCategory}
+              {categories.find((category) => category.tag === selectedCategory)?.label ?? `#${selectedCategory}`}
             </Text>
             <Pressable
               onPress={() => setSelectedCategory(null)}

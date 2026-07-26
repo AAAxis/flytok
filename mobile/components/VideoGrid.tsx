@@ -55,13 +55,12 @@ function GridTile({
   onLongPress?: () => void;
 }) {
   const [failed, setFailed] = useState(false);
+  const label = video.location?.label || video.caption || 'Video';
   const player = useVideoPlayer(video.downloadURL, (p) => {
     p.muted = true;
     p.loop = false;
   });
 
-  // Hide tiles whose source 404s / is corrupt — otherwise they render as a
-  // black square with a broken-play glyph in the middle of the grid.
   useEffect(() => {
     const sub = player.addListener('statusChange', ({ status, error }) => {
       if (status === 'error' || error) setFailed(true);
@@ -80,11 +79,22 @@ function GridTile({
         nativeControls={false}
         allowsVideoFrameAnalysis={false}
       />
-      {video.caption ? (
-        <View style={styles.tileOverlay}>
-          <Text numberOfLines={1} style={styles.tileCaption}>
-            {video.caption}
-          </Text>
+      <View style={styles.tileOverlay}>
+        <Text numberOfLines={2} style={styles.tileCaption}>
+          {label}
+        </Text>
+        {video.location?.label ? (
+          <View style={styles.tileMeta}>
+            <Ionicons name="location" size={10} color={colors.textDim} />
+            <Text numberOfLines={1} style={styles.tileMetaText}>
+              {video.location.label}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      {video.downloadURL ? (
+        <View style={styles.playBadge}>
+          <Ionicons name="videocam" size={12} color={colors.bg} />
         </View>
       ) : null}
     </Pressable>
@@ -102,6 +112,8 @@ const styles = StyleSheet.create({
     height: TILE_H,
     backgroundColor: colors.surface,
     overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tileVideo: { ...StyleSheet.absoluteFillObject },
   tileOverlay: {
@@ -109,11 +121,24 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.58)',
     paddingHorizontal: 6,
     paddingVertical: 4,
   },
-  tileCaption: { color: colors.text, fontSize: 11 },
+  tileCaption: { color: colors.text, fontSize: 11, fontWeight: '600' },
+  tileMeta: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 },
+  tileMetaText: { color: colors.textDim, fontSize: 10, flex: 1 },
+  playBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   empty: {
     paddingVertical: 60,
     alignItems: 'center',

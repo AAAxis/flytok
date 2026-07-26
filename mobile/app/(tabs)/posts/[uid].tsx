@@ -10,6 +10,7 @@ import {
   ViewToken,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { filterPlayable, getMyVideos, getSavedVideoIds, getVideosByIds, type VideoDoc } from '@/lib/firestore';
 import { FeedItem } from '@/components/FeedItem';
 import { usePlayerPool, type FeedPoolItem } from '@/lib/feed/usePlayerPool';
@@ -19,6 +20,7 @@ import { colors } from '@/lib/theme';
 const FALLBACK_HEIGHT = Dimensions.get('window').height;
 
 export default function UserPostsFeed() {
+  const isFocused = useIsFocused();
   const { uid, start, source } = useLocalSearchParams<{
     uid: string;
     start?: string;
@@ -119,7 +121,7 @@ export default function UserPostsFeed() {
     [videos, cachedUriById],
   );
 
-  const pool = usePlayerPool(poolItems, activeIndex);
+  const pool = usePlayerPool(poolItems, activeIndex, undefined, isFocused);
 
   return (
     <View style={styles.root} onLayout={onContainerLayout}>
@@ -139,7 +141,7 @@ export default function UserPostsFeed() {
           renderItem={({ item, index }) => (
             <FeedItem
               item={item}
-              active={index === activeIndex}
+              active={isFocused && index === activeIndex}
               height={viewportHeight}
               player={pool.getPlayerForIndex(index)}
             />

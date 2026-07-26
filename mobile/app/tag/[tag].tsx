@@ -10,6 +10,7 @@ import {
   ViewToken,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { filterPlayable, getBlockedIds, videosCol, type VideoDoc } from '@/lib/firestore';
 import { FeedItem } from '@/components/FeedItem';
 import { usePlayerPool, type FeedPoolItem } from '@/lib/feed/usePlayerPool';
@@ -25,6 +26,7 @@ const FALLBACK_HEIGHT = Dimensions.get('window').height;
  * (lowercased; that's how `extractHashtags` writes them).
  */
 export default function TagFeed() {
+  const isFocused = useIsFocused();
   const { tag, start } = useLocalSearchParams<{ tag: string; start?: string }>();
   const normalised = (tag ?? '').replace(/^#/, '').toLowerCase();
 
@@ -127,7 +129,7 @@ export default function TagFeed() {
     [videos, cachedUriById],
   );
 
-  const pool = usePlayerPool(poolItems, activeIndex);
+  const pool = usePlayerPool(poolItems, activeIndex, undefined, isFocused);
 
   return (
     <View style={styles.root} onLayout={onContainerLayout}>
@@ -160,7 +162,7 @@ export default function TagFeed() {
           renderItem={({ item, index }) => (
             <FeedItem
               item={item}
-              active={index === activeIndex}
+              active={isFocused && index === activeIndex}
               height={viewportHeight}
               player={pool.getPlayerForIndex(index)}
             />

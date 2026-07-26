@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   Image,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -36,7 +34,6 @@ import { colors } from '@/lib/theme';
 import { useUserTheme } from '@/lib/theme/userTheme';
 import { dicebearURL } from '@/lib/avatars';
 import { ROUTES_CREATE_ENABLED, ROUTES_DISPLAY_ENABLED } from '@/lib/features';
-import { presentTopupPaywall } from '@/lib/purchases';
 
 type Tab = 'mine' | 'map' | 'routes';
 
@@ -55,30 +52,17 @@ export default function Profile() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [counts, setCounts] = useState(cached?.counts ?? { following: 0, followers: 0 });
   const [loading, setLoading] = useState(!cached);
-  const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<Tab>('mine');
   const [followList, setFollowList] = useState<null | 'following' | 'followers'>(null);
 
   const theme = useUserTheme(me?.uid);
   const dicebear = me ? dicebearURL(theme.avatarStyle, theme.avatarSeed ?? me.uid, 256) : null;
 
-  // Tap the avatar to flip between the DiceBear avatar and the real photo.
-  const [showPhoto, setShowPhoto] = useState(false);
-  const spin = useRef(new Animated.Value(0)).current;
-  const avatarUri = showPhoto ? (photoURL ?? dicebear) : (dicebear ?? photoURL);
-  const hasBoth = !!photoURL && !!dicebear;
+  const avatarUri = dicebear ?? photoURL;
 
-  function flipAvatar() {
-    if (!hasBoth) {
-      router.push('/edit-profile' as never);
-      return;
-    }
-    setShowPhoto((s) => !s);
-    spin.setValue(0);
-    Animated.timing(spin, { toValue: 1, duration: 420, useNativeDriver: true }).start();
+  function openEditProfile() {
+    router.push('/edit-profile' as never);
   }
-
-  const avatarRotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
   // "Home base" — the most frequent location across the user's videos.
   const homeBase = useMemo(() => {
@@ -160,15 +144,6 @@ export default function Profile() {
     }, [load]),
   );
 
-  async function onRefresh() {
-    setRefreshing(true);
-    try {
-      await load();
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
   const confirmDeleteVideo = useCallback((video: VideoDoc) => {
     Alert.alert(
       'Delete this post?',
@@ -195,21 +170,10 @@ export default function Profile() {
 
   const topHandle = username ?? `user_${me.uid.slice(0, 6)}`;
 
-  async function showPremiumPaywall() {
-    try {
-      await presentTopupPaywall();
-    } catch (err: any) {
-      Alert.alert('Paywall unavailable', err?.message ?? 'Try again later.');
-    }
-  }
-
   return (
     <View style={styles.root}>
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 60 }]}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
-        }
         showsVerticalScrollIndicator={false}
       >
         {loading ? (
@@ -220,16 +184,14 @@ export default function Profile() {
           <>
             {/* Identity row — avatar + stats */}
             <View style={styles.headerRow}>
-              <Pressable onPress={flipAvatar} hitSlop={6}>
-                <Animated.View style={{ transform: [{ rotateY: avatarRotate }] }}>
-                  {avatarUri ? (
-                    <Image source={{ uri: avatarUri }} style={styles.avatar} />
-                  ) : (
-                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                      <Ionicons name="person" size={32} color={colors.text} />
-                    </View>
-                  )}
-                </Animated.View>
+              <Pressable onPress={openEditProfile} hitSlop={6}>
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.avatar} />
+                ) : (
+                  <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                    <Ionicons name="person" size={32} color={colors.text} />
+                  </View>
+                )}
               </Pressable>
               <View style={styles.statsCol}>
                 <View style={styles.statsRow}>
@@ -300,8 +262,7 @@ export default function Profile() {
                 ownerUid={me.uid}
                 canCreate={ROUTES_CREATE_ENABLED}
                 onCreate={() => router.push('/create-trip' as never)}
-                onGetPremium={showPremiumPaywall}
-                emptyLabel="No routes yet. Premium members can create trip routes from their videos."
+                emptyLabel="No routes yet. Create a trip route from your videos."
               />
             ) : (
               <VideoGrid

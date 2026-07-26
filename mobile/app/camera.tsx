@@ -31,6 +31,11 @@ import {
   type VideoLocation,
 } from '@/lib/firestore';
 import { geocodeAddress, getCurrentLocationLabeled, type GeoResult } from '@/lib/geocode';
+import {
+  importPickedVideo,
+  videoImportErrorMessage,
+  VIDEO_LIBRARY_PICKER_OPTIONS,
+} from '@/lib/localVideoImport';
 import { colors } from '@/lib/theme';
 
 type Mode = 'camera' | 'review';
@@ -76,27 +81,14 @@ export default function CameraScreen() {
         );
         return;
       }
-      const res = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-        videoMaxDuration: 60,
-        quality: 1,
-        // Force the asset to be exported as a local file so iCloud-only
-        // videos get downloaded before we hand back a URI.
-        videoExportPreset: ImagePicker.VideoExportPreset.Passthrough,
-      });
+      const res = await ImagePicker.launchImageLibraryAsync(VIDEO_LIBRARY_PICKER_OPTIONS);
       if (!res.canceled && res.assets[0]) {
-        setUri(res.assets[0].uri);
+        const localUri = await importPickedVideo(res.assets[0]);
+        setUri(localUri);
         setMode('review');
       }
     } catch (err: any) {
-      const msg = err?.message ?? '';
-      const isCloud = /3164|iCloud|could not be completed/i.test(msg);
-      Alert.alert(
-        'Could not load that video',
-        isCloud
-          ? "iOS couldn't load this clip — it's likely in iCloud and not yet downloaded to your phone. Open it in Photos first to download it, then try again."
-          : msg || 'Try a different video.',
-      );
+      Alert.alert('Could not load that video', videoImportErrorMessage(err));
     }
   }
 
@@ -262,7 +254,15 @@ export default function CameraScreen() {
     <View style={styles.cameraScreen}>
       <Stack.Screen options={{ headerShown: false }} />
       {Platform.OS === 'android' ? (
-        <View style={[StyleSheet.absoluteFill, styles.androidCameraFallback]} />
+        <View style={[StyleSheet.absoluteFill, styles.androidCameraFallback]}>
+          <View style={styles.androidCameraPrompt}>
+            <Ionicons name="videocam" size={48} color={colors.accent} />
+            <Text style={styles.androidCameraTitle}>Create a new video</Text>
+            <Text style={styles.androidCameraText}>
+              Record with your camera or choose a video from your library.
+            </Text>
+          </View>
+        </View>
       ) : (
         <CameraView
           ref={cameraRef}
@@ -427,7 +427,7 @@ function ReviewScreen({
             </View>
 
             <Text style={styles.detailsHint}>
-              Tip: type #tags and @mentions in the caption — they'll be linked
+              Tip: type #tags and @mentions in the caption — they&apos;ll be linked
               automatically and help others find your post.
             </Text>
           </ScrollView>
@@ -647,7 +647,15 @@ const styles = StyleSheet.create({
   altButtonText: { color: colors.accent, fontSize: 14 },
 
   cameraScreen: { flex: 1, backgroundColor: '#000' },
-  androidCameraFallback: { backgroundColor: '#000' },
+  androidCameraFallback: {
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  androidCameraPrompt: { alignItems: 'center', gap: 12, paddingBottom: 80 },
+  androidCameraTitle: { color: colors.text, fontSize: 22, fontWeight: '700' },
+  androidCameraText: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
   cameraOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between' },
   topBar: {
     flexDirection: 'row',

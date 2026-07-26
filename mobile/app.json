@@ -2,7 +2,7 @@
   "expo": {
     "name": "Roamerz",
     "slug": "flytok",
-    "version": "1.3",
+    "version": "1.5",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "flytok",
@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.roamrez.flytok",
-      "buildNumber": "5",
+      "buildNumber": "8",
       "googleServicesFile": "../firebase/GoogleService-Info.plist",
       "usesAppleSignIn": true,
       "infoPlist": {
@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "com.roamrez.flytok",
-      "versionCode": 9,
+      "versionCode": 11,
       "googleServicesFile": "../firebase/google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#000000",
@@ -108,6 +108,20 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "cec0e6cb-e15f-4b87-b34f-cc718e820b84"
+      }
+    },
+    "owner": "test7895",
+    "runtimeVersion": "1.5",
+    "updates": {
+      "url": "https://u.expo.dev/cec0e6cb-e15f-4b87-b34f-cc718e820b84",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
     }
   }
 }

@@ -10,19 +10,23 @@ import {
   ViewToken,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { filterPlayable, getBlockedIds, videosCol, type VideoDoc } from '@/lib/firestore';
 import { FeedItem } from '@/components/FeedItem';
 import { usePlayerPool, type FeedPoolItem } from '@/lib/feed/usePlayerPool';
 import { getCachedVideoPath } from '@/lib/videoCache';
 import { colors } from '@/lib/theme';
+import { sameCountry } from '@/lib/location-country';
 
 const FALLBACK_HEIGHT = Dimensions.get('window').height;
 
 export default function PlaceFeed() {
-  const { slug, label, start } = useLocalSearchParams<{
+  const isFocused = useIsFocused();
+  const { slug, label, start, scope } = useLocalSearchParams<{
     slug: string;
     label?: string;
     start?: string;
+    scope?: 'place' | 'country';
   }>();
 
   // The route param is encodeURIComponent(label.toLowerCase()) — `label` query
@@ -53,7 +57,9 @@ export default function PlaceFeed() {
           .map((d) => ({ id: d.id, ...(d.data() as Omit<VideoDoc, 'id'>) }))
           .filter(
             (v) =>
-              v.location?.label?.trim().toLowerCase() === matchKey &&
+              (scope === 'country'
+                ? sameCountry(v.location, placeLabel)
+                : v.location?.label?.trim().toLowerCase() === matchKey) &&
               !blockedIds.has(v.ownerId),
           ),
       );
@@ -61,7 +67,7 @@ export default function PlaceFeed() {
       console.warn('[place-feed] load failed:', err);
       return [];
     }
-  }, [matchKey]);
+  }, [matchKey, placeLabel, scope]);
 
   useEffect(() => {
     load()
@@ -131,7 +137,7 @@ export default function PlaceFeed() {
     [videos, cachedUriById],
   );
 
-  const pool = usePlayerPool(poolItems, activeIndex);
+  const pool = usePlayerPool(poolItems, activeIndex, undefined, isFocused);
 
   return (
     <View style={styles.root} onLayout={onContainerLayout}>
@@ -164,7 +170,7 @@ export default function PlaceFeed() {
           renderItem={({ item, index }) => (
             <FeedItem
               item={item}
-              active={index === activeIndex}
+              active={isFocused && index === activeIndex}
               height={viewportHeight}
               player={pool.getPlayerForIndex(index)}
             />

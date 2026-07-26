@@ -15,6 +15,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import {
   filterPlayable,
   followingCol,
@@ -58,6 +59,7 @@ const TABS: { id: FeedTab; label: string }[] = [
 export default function Feed() {
   const me = auth().currentUser;
   const router = useRouter();
+  const isFocused = useIsFocused();
   const [tab, setTab] = useState<FeedTab>('trending');
   const [videos, setVideos] = useState<VideoDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -252,7 +254,7 @@ export default function Feed() {
     [videos, cachedUriById],
   );
 
-  const pool = usePlayerPool(poolItems, activeIndex, handleItemError);
+  const pool = usePlayerPool(poolItems, activeIndex, handleItemError, isFocused);
 
   return (
     <View style={styles.root} onLayout={onContainerLayout}>
@@ -279,7 +281,7 @@ export default function Feed() {
           renderItem={({ item, index }) => (
             <FeedItem
               item={item}
-              active={index === activeIndex}
+              active={isFocused && index === activeIndex}
               height={viewportHeight}
               player={pool.getPlayerForIndex(index)}
               onBlocked={handleBlocked}

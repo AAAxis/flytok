@@ -8,13 +8,15 @@ import { colors } from '@/lib/theme';
 export type MapCategory = {
   tag: string;
   count: number;
+  label?: string;
+  tone?: 'default' | 'saved';
 };
 
 const ALL_KEY = '__all__';
 
 type Row =
   | { kind: 'all'; total: number }
-  | { kind: 'tag'; tag: string; count: number };
+  | { kind: 'tag'; tag: string; count: number; label?: string; tone?: 'default' | 'saved' };
 
 type Props = {
   visible: boolean;
@@ -36,7 +38,7 @@ export function MapCategoriesSheet({
     const total = categories.reduce((acc, c) => acc + c.count, 0);
     return [
       { kind: 'all', total },
-      ...categories.map((c) => ({ kind: 'tag' as const, tag: c.tag, count: c.count })),
+      ...categories.map((c) => ({ kind: 'tag' as const, ...c })),
     ];
   }, [categories]);
 
@@ -64,7 +66,7 @@ export function MapCategoriesSheet({
           const isSelected =
             item.kind === 'all' ? selected === null : selected === item.tag;
           const label =
-            item.kind === 'all' ? 'All categories' : `#${item.tag}`;
+            item.kind === 'all' ? 'All categories' : (item.label ?? `#${item.tag}`);
           const count = item.kind === 'all' ? item.total : item.count;
           return (
             <Pressable
@@ -74,13 +76,21 @@ export function MapCategoriesSheet({
               }}
               style={({ pressed }) => [
                 styles.row,
+                item.kind === 'tag' && item.tone === 'saved' && styles.rowSaved,
                 isSelected && styles.rowSelected,
                 pressed && styles.rowPressed,
               ]}
             >
               <View style={styles.rowLabelWrap}>
+                {item.kind === 'tag' && item.tone === 'saved' ? (
+                  <Ionicons name="bookmark" size={17} color="#f8d66d" />
+                ) : null}
                 <Text
-                  style={[styles.rowLabel, isSelected && styles.rowLabelSelected]}
+                  style={[
+                    styles.rowLabel,
+                    item.kind === 'tag' && item.tone === 'saved' && styles.rowLabelSaved,
+                    isSelected && styles.rowLabelSelected,
+                  ]}
                   numberOfLines={1}
                 >
                   {label}
@@ -115,6 +125,11 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
     backgroundColor: colors.surfaceAlt,
   },
+  rowSaved: {
+    borderColor: 'rgba(248,214,109,0.7)',
+    backgroundColor: '#382f18',
+  },
+  rowLabelSaved: { color: '#f8d66d', fontWeight: '700' },
   rowPressed: { opacity: 0.85 },
   rowLabelWrap: {
     flex: 1,

@@ -49,12 +49,13 @@ export default function UploadSuccess() {
     };
   }, [videoId]);
 
-  // Load a paused poster — `useVideoPlayer` accepts an empty source up front
-  // so the hook is stable while we wait for the doc to resolve.
+  // Start muted playback once the freshly uploaded URL resolves. A paused
+  // AVPlayer at time zero often has no decoded frame yet and rendered as a
+  // completely black confirmation card on iOS.
   const player = useVideoPlayer(video?.downloadURL ?? '', (p) => {
     p.muted = true;
-    p.loop = false;
-    // Don't auto-play; we want the still frame.
+    p.loop = true;
+    if (video?.downloadURL) p.play();
   });
 
   function watchPost() {
@@ -77,7 +78,7 @@ export default function UploadSuccess() {
               <Ionicons name="checkmark" size={20} color={colors.bg} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>You're up!</Text>
+              <Text style={styles.title}>You&apos;re up!</Text>
               <Text style={styles.subtitle}>Your post is live.</Text>
             </View>
           </View>

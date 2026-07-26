@@ -55,18 +55,18 @@ export function ProfileRoutesList({
   ownerUid,
   canCreate,
   onCreate,
-  onGetPremium,
   emptyLabel = 'No routes yet.',
 }: {
   trips: Trip[];
   ownerUid: string;
   canCreate: boolean;
   onCreate?: () => void;
-  onGetPremium?: () => void;
   emptyLabel?: string;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
-  const showCta = canCreate || onGetPremium;
+  // Creating routes is free — the CTA shows on your own profile whenever the
+  // feature is switched on, with no premium/paywall branch.
+  const showCta = ROUTES_CREATE_ENABLED && canCreate;
 
   return (
     <View style={styles.routesWrap}>
@@ -116,27 +116,17 @@ export function ProfileRoutesList({
 
       {showCta ? (
         <Pressable
-          onPress={ROUTES_CREATE_ENABLED && canCreate ? onCreate : onGetPremium}
+          onPress={onCreate}
           style={({ pressed }) => [pressed && styles.actionPressed]}
         >
           <LinearGradient
-            colors={
-              ROUTES_CREATE_ENABLED && canCreate
-                ? ['#38bdf8', '#0ea5e9']
-                : ['#f59e0b', '#e11d48']
-            }
+            colors={['#38bdf8', '#0ea5e9']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.createBtn}
           >
-            <Ionicons
-              name={ROUTES_CREATE_ENABLED && canCreate ? 'location' : 'diamond'}
-              size={16}
-              color="#fff"
-            />
-            <Text style={styles.createBtnText}>
-              {ROUTES_CREATE_ENABLED && canCreate ? 'Create trip route from your videos' : 'Get premium to create routes'}
-            </Text>
+            <Ionicons name="location" size={16} color="#fff" />
+            <Text style={styles.createBtnText}>Create trip route from your videos</Text>
           </LinearGradient>
         </Pressable>
       ) : null}

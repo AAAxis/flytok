@@ -28,6 +28,7 @@ import { ensureThread } from '@/lib/messaging';
 import { useUserProfile } from '@/lib/useUserLabel';
 import { VideoGrid } from '@/components/VideoGrid';
 import { ProfileRoutesList } from '@/components/profile/ProfileRoutesList';
+import { ProfileVideoMap } from '@/components/profile/ProfileVideoMap';
 import { RouteIcon } from '@/components/RouteIcon';
 import { FollowListSheet } from '@/components/FollowListSheet';
 import { ReportSheet } from '@/components/ReportSheet';
@@ -38,7 +39,7 @@ import { dicebearURL } from '@/lib/avatars';
 import { ROUTES_DISPLAY_ENABLED } from '@/lib/features';
 
 const AVATAR_SIZE = 96;
-type Tab = 'posts' | 'routes';
+type Tab = 'posts' | 'map' | 'routes';
 
 export default function UserProfile() {
   const { uid } = useLocalSearchParams<{ uid: string }>();
@@ -298,6 +299,12 @@ export default function UserProfile() {
           <View style={styles.tabsBar}>
             <TabButton active={tab === 'posts'} icon="grid" label="Posts" onPress={() => setTab('posts')} />
             <TabButton
+              active={tab === 'map'}
+              icon="map"
+              label="Map"
+              onPress={() => setTab('map')}
+            />
+            <TabButton
               active={tab === 'routes'}
               icon="location"
               label="Routes"
@@ -311,6 +318,14 @@ export default function UserProfile() {
           <View style={styles.loading}>
             <ActivityIndicator color={colors.accent} />
           </View>
+        ) : tab === 'map' ? (
+          <ProfileVideoMap
+            videos={videos}
+            loading={loading}
+            onPressVideo={(video) =>
+              router.push(`/posts/${uid}?start=${video.id}&source=mine` as never)
+            }
+          />
         ) : ROUTES_DISPLAY_ENABLED && tab === 'routes' ? (
           <ProfileRoutesList
             trips={trips}

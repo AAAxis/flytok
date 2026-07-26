@@ -1,4 +1,3 @@
-/* eslint-disable react-compiler/react-compiler */
 'use no memo';
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -8,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { AppBottomSheet } from '@/components/ui/AppBottomSheet';
 import { colors } from '@/lib/theme';
 import type { VideoDoc } from '@/lib/firestore';
+import { countryFromLocation } from '@/lib/location-country';
 
 export function placeSlug(label: string): string {
   return encodeURIComponent(label.trim().toLowerCase());
@@ -26,8 +26,9 @@ export function PlaceCard({ visible, onClose, placeName, videos }: Props) {
 
   function openPlaceFeed(startId?: string) {
     if (!placeName) return;
-    const slug = placeSlug(placeName);
-    const params = new URLSearchParams({ label: placeName });
+    const country = countryFromLocation(videos[0]?.location) ?? placeName;
+    const slug = placeSlug(country);
+    const params = new URLSearchParams({ label: country, scope: 'country' });
     if (startId) params.set('start', startId);
     onClose();
     // expo-router uses dynamic segments; pass label via query so the screen

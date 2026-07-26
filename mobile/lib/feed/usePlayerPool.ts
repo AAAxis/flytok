@@ -77,6 +77,8 @@ export function usePlayerPool(
    * the item so users never sit on a blank or broken card.
    */
   onItemError?: (videoId: string) => void,
+  /** Whether the screen that owns the pool is currently focused. */
+  enabled = true,
 ): PlayerPool {
   // Three independent players. They live for the lifetime of the host
   // component; the hook releases them automatically on unmount.
@@ -122,7 +124,6 @@ export function usePlayerPool(
       const onStatusChange = (e: { status: string; error?: { message?: string } }) => {
         if (e.status === 'error') {
           if (__DEV__) {
-            // eslint-disable-next-line no-console
             console.warn('[playerPool] error on slot', {
               uri: slot.uri,
               videoId: slot.videoId,
@@ -164,8 +165,9 @@ export function usePlayerPool(
   // no slot keeps decoding while `useVideoPlayer`'s auto-release runs. The
   // hook handles `release()` for us — we just guarantee playback stops first.
   useEffect(() => {
+    const slots = slotsRef.current;
     return () => {
-      for (const slot of slotsRef.current) {
+      for (const slot of slots) {
         try {
           slot.player.pause();
         } catch {
@@ -246,7 +248,7 @@ export function usePlayerPool(
         slot.loaded = false;
       }
     }
-    for (const { index, slot, item } of desiredAssignments) {
+    for (const { slot, item } of desiredAssignments) {
       // Replace when:
       //  - slot is bound to a different video (rotation), or
       //  - same video but the URI changed (e.g. cached path resolved), or
@@ -307,7 +309,7 @@ export function usePlayerPool(
     // handles redundant `play()` calls cheaply.
     for (const { index, slot } of desiredAssignments) {
       try {
-        if (index === activeIndex) slot.player.play();
+        if (enabled && index === activeIndex) slot.player.play();
         else slot.player.pause();
       } catch {
         // ignore — released/transitioning player
@@ -320,7 +322,7 @@ export function usePlayerPool(
       desiredAssignments.map(({ index, slot }) => [index, slot.player]),
     );
     setIndexToPlayer((prev) => (mapsEqual(prev, next) ? prev : next));
-  }, [items, activeIndex]);
+  }, [items, activeIndex, enabled]);
 
   // Watchdog for the ACTIVE clip: if its player never fires `sourceLoad`
   // (metadata ready) within LOAD_TIMEOUT_MS and hasn't errored either, the
@@ -328,6 +330,7 @@ export function usePlayerPool(
   // Drop it so the user isn't stuck on a blank card. `slot.loaded` is a
   // mutable field, so we re-check it at fire time rather than depending on it.
   useEffect(() => {
+    if (!enabled) return;
     const player = indexToPlayer.get(activeIndex);
     if (!player) return;
     const slot = slotsRef.current.find((s) => s.player === player);
@@ -339,7 +342,7 @@ export function usePlayerPool(
       }
     }, LOAD_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [activeIndex, indexToPlayer]);
+  }, [activeIndex, enabled, indexToPlayer]);
 
   return useMemo<PlayerPool>(
     () => ({

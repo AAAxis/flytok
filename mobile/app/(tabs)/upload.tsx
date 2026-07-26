@@ -31,6 +31,11 @@ import {
 } from '@/lib/firestore';
 import type { FirebaseStorageTypes } from '@react-native-firebase/storage';
 import { geocodeAddress, getCurrentLocationLabeled, type GeoResult } from '@/lib/geocode';
+import {
+  importPickedVideo,
+  videoImportErrorMessage,
+  VIDEO_LIBRARY_PICKER_OPTIONS,
+} from '@/lib/localVideoImport';
 import { colors } from '@/lib/theme';
 import { TrimButton } from '@/components/upload/TrimButton';
 import { MusicPickerSheet } from '@/components/upload/MusicPickerSheet';
@@ -151,13 +156,13 @@ export default function Upload() {
   }
 
   async function pickVideo() {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      allowsEditing: false,
-      quality: 1,
-    });
-    if (!res.canceled && res.assets[0]) {
-      setUri(res.assets[0].uri);
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync(VIDEO_LIBRARY_PICKER_OPTIONS);
+      if (!res.canceled && res.assets[0]) {
+        setUri(await importPickedVideo(res.assets[0]));
+      }
+    } catch (err) {
+      Alert.alert('Could not load that video', videoImportErrorMessage(err));
     }
   }
 

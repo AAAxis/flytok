@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import { Alert, Dimensions, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, type VideoPlayer } from 'expo-video';
@@ -62,13 +63,110 @@ export function FeedItem({
   const [scrubbing, setScrubbing] = useState(false);
   const trackWidthRef = useRef(0);
   const wasPlayingRef = useRef(false);
+  const holdingRef = useRef(false);
+  const previousPlaybackRateRef = useRef(1);
+
+  // The gesture callbacks below live in a `useMemo`d gesture object that is
+  // built once, so they read the current player/active flag through refs
+  // instead of a captured closure.
+  const playerRef = useRef(player);
+  playerRef.current = player;
+  const activeRef = useRef(active);
+  activeRef.current = active;
+
+  function startFastForward() {
+    const p = playerRef.current;
+    if (!p || !activeRef.current) return;
+    previousPlaybackRateRef.current = p.playbackRate;
+    holdingRef.current = true;
+    p.playbackRate = 2;
+    setHolding(true);
+  }
+
+  function stopFastForward() {
+    if (!holdingRef.current) return;
+    holdingRef.current = false;
+    const p = playerRef.current;
+    if (p) p.playbackRate = previousPlaybackRateRef.current;
+    setHolding(false);
+  }
+
+  function togglePlayback() {
+    const p = playerRef.current;
+    if (!p) return;
+    if (p.playing) p.pause();
+    else p.play();
+  }
+
+  // Tap to play/pause, long-press to fast-forward at 2x.
+  //
+  // These deliberately use react-native-gesture-handler rather than a
+  // `Pressable` wrapped around the `VideoView`. On Android expo-video's native
+  // view marks every MotionEvent as handled and re-dispatches its own copy to
+  // JS (see VideoView.onTouchEvent upstream), so an enclosing Pressable never
+  // receives a usable gesture stream and neither tap nor long-press fired at
+  // all. RNGH's root view sees touches before the native player can swallow
+  // them, and the detector sits *above* the video rather than around it.
+  const videoGesture = useMemo(() => {
+    const longPress = Gesture.LongPress()
+      .minDuration(220)
+      .runOnJS(true)
+      .onStart(() => startFastForward())
+      // Fires on release *and* on cancellation — e.g. when the feed list takes
+      // over the touch because the user started scrolling mid-hold.
+      .onFinalize(() => stopFastForward());
+
+    const tap = Gesture.Tap()
+      .runOnJS(true)
+      .onEnd((_event, success) => {
+        if (success) togglePlayback();
+      });
+
+    // Exclusive: the tap is only recognised once the long-press has failed, so
+    // lifting a finger after a 2x hold doesn't also pause the video.
+    return Gesture.Exclusive(longPress, tap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Scrubbing. `minDistance(0)` activates the pan on touch-down rather than
+  // after a drag threshold, which is what locks the feed in place: the moment
+  // an RNGH handler activates, the root view stops forwarding the rest of the
+  // touch stream to the FlatList underneath, so the video can no longer be
+  // paged up or down until the finger lifts.
+  const scrubGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(0)
+        .runOnJS(true)
+        .onStart((e) => {
+          const p = playerRef.current;
+          if (!p) return;
+          wasPlayingRef.current = !!p.playing;
+          p.pause();
+          setScrubbing(true);
+          if (trackWidthRef.current > 0) seekToFraction(e.x / trackWidthRef.current);
+        })
+        .onUpdate((e) => {
+          if (!playerRef.current) return;
+          if (trackWidthRef.current > 0) seekToFraction(e.x / trackWidthRef.current);
+        })
+        // Covers release and cancellation alike.
+        .onFinalize(() => {
+          setScrubbing(false);
+          const p = playerRef.current;
+          if (activeRef.current && p && wasPlayingRef.current) p.play();
+        }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   function seekToFraction(fraction: number) {
-    if (!player) return;
+    const p = playerRef.current;
+    if (!p) return;
     const f = Math.min(1, Math.max(0, fraction));
-    const dur = player.duration ?? 0;
+    const dur = p.duration ?? 0;
     if (dur > 0) {
-      player.currentTime = dur * f;
+      p.currentTime = dur * f;
       setProgress(f);
     }
   }
@@ -97,6 +195,18 @@ export function FeedItem({
     }, 250);
     return () => clearInterval(id);
   }, [active, player, scrubbing]);
+
+  // A pooled player can be reassigned while a gesture is active (for example,
+  // when the user starts scrolling before lifting their finger). Always reset
+  // its speed before this card releases it.
+  useEffect(() => {
+    return () => {
+      if (!holdingRef.current || !player) return;
+      player.playbackRate = previousPlaybackRateRef.current;
+      holdingRef.current = false;
+      setHolding(false);
+    };
+  }, [player]);
 
   // Per-card Firestore listeners. We gate every subscription on `active` so
   // off-screen cards don't each hold open four onSnapshot streams. With a 50
@@ -224,90 +334,64 @@ export function FeedItem({
     if (!label) return;
     router.push(`/place/${placeSlug(label)}?label=${encodeURIComponent(label)}` as never);
   }
+  function openOnMap() {
+    const location = item.location;
+    if (!location) return;
+    player?.pause();
+    router.push({
+      pathname: '/(tabs)/map',
+      params: {
+        latitude: String(location.latitude),
+        longitude: String(location.longitude),
+        videoId: item.id,
+      },
+    } as never);
+  }
 
   return (
     <View style={[styles.item, { height }]}>
-      <Pressable
-        onPress={() => {
-          if (!player) return;
-          // Single tap toggles play/pause.
-          if (player.playing) player.pause();
-          else player.play();
-        }}
-        onLongPress={() => {
-          if (!player) return;
-          // Press-and-hold pauses while held, resumes on release.
-          player.pause();
-          setHolding(true);
-        }}
-        onPressOut={() => {
-          if (!holding) return;
-          setHolding(false);
-          if (active && player) player.play();
-        }}
-        delayLongPress={220}
-        style={styles.fill}
-      >
-        {player ? (
-          <VideoView
-            player={player}
-            style={[styles.video, { height }]}
-            contentFit="cover"
-            nativeControls={false}
-            allowsVideoFrameAnalysis={false}
-          />
-        ) : (
-          // Out of the active ±1 window: render a black placeholder. We
-          // intentionally avoid spawning a thumbnail player here — that was
-          // the OOM root cause. The card swaps in a real player as soon as
-          // the user scrolls within range.
-          <View style={[styles.video, styles.posterFallback, { height }]} />
-        )}
-      </Pressable>
+      {player ? (
+        <VideoView
+          player={player}
+          style={[styles.video, { height }]}
+          contentFit="cover"
+          nativeControls={false}
+          allowsVideoFrameAnalysis={false}
+        />
+      ) : (
+        // Out of the active ±1 window: render a black placeholder. We
+        // intentionally avoid spawning a thumbnail player here — that was
+        // the OOM root cause. The card swaps in a real player as soon as
+        // the user scrolls within range.
+        <View style={[styles.video, styles.posterFallback, { height }]} />
+      )}
+
+      <GestureDetector gesture={videoGesture}>
+        {/* Stops short of the bottom so the scrub track below keeps its own
+            touch area instead of a tap there toggling playback. */}
+        <View style={styles.tapLayer} />
+      </GestureDetector>
       {holding && (
         <View style={styles.holdIndicator} pointerEvents="none">
-          <Ionicons name="pause" size={64} color="rgba(255,255,255,0.85)" />
+          <Text style={styles.speedLabel}>2x</Text>
         </View>
       )}
 
-      <View
-        style={styles.progressHitArea}
-        onLayout={(e) => {
-          trackWidthRef.current = e.nativeEvent.layout.width;
-        }}
-        onStartShouldSetResponder={() => !!player}
-        onMoveShouldSetResponder={() => !!player}
-        onResponderGrant={(e) => {
-          if (!player) return;
-          wasPlayingRef.current = !!player.playing;
-          player.pause();
-          setScrubbing(true);
-          if (trackWidthRef.current > 0) {
-            seekToFraction(e.nativeEvent.locationX / trackWidthRef.current);
-          }
-        }}
-        onResponderMove={(e) => {
-          if (!player) return;
-          if (trackWidthRef.current > 0) {
-            seekToFraction(e.nativeEvent.locationX / trackWidthRef.current);
-          }
-        }}
-        onResponderRelease={() => {
-          setScrubbing(false);
-          if (active && player && wasPlayingRef.current) player.play();
-        }}
-        onResponderTerminate={() => {
-          setScrubbing(false);
-          if (active && player && wasPlayingRef.current) player.play();
-        }}
-      >
-        <View style={[styles.progressTrack, scrubbing && styles.progressTrackActive]}>
-          <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-          {scrubbing && (
-            <View style={[styles.progressThumb, { left: `${progress * 100}%` }]} />
-          )}
+      <GestureDetector gesture={scrubGesture}>
+        <View
+          style={styles.progressHitArea}
+          onLayout={(e) => {
+            trackWidthRef.current = e.nativeEvent.layout.width;
+          }}
+        >
+          <View style={[styles.progressTrack, scrubbing && styles.progressTrackActive]}>
+            <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+            {scrubbing && (
+              <View style={[styles.progressThumb, { left: `${progress * 100}%` }]} />
+            )}
+          </View>
         </View>
-      </View>
+      </GestureDetector>
 
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={styles.bottomLeft}>
@@ -388,6 +472,17 @@ export function FeedItem({
               style={styles.actionIcon}
             />
           </Pressable>
+          {item.location ? (
+            <Pressable
+              onPress={openOnMap}
+              style={styles.actionButton}
+              hitSlop={8}
+              accessibilityLabel="Show this video on the map"
+            >
+              <Ionicons name="map" size={32} color="#fff" style={styles.actionIcon} />
+              <Text style={styles.actionLabel}>Map</Text>
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={() => setShowShare(true)}
             style={styles.actionButton}
@@ -481,13 +576,24 @@ export function FeedItem({
 
 const styles = StyleSheet.create({
   item: { width, backgroundColor: '#000' },
-  fill: { ...StyleSheet.absoluteFillObject },
+  tapLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 24 },
   video: { width },
   posterFallback: { backgroundColor: '#000' },
   holdIndicator: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingTop: 96,
+  },
+  speedLabel: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 18,
+    overflow: 'hidden',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
   },
   progressHitArea: {
     position: 'absolute',
