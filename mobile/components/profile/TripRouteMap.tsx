@@ -151,6 +151,8 @@ export function TripRouteMap({ trip, ownerUid }: { trip: Trip; ownerUid?: string
               <AndroidOpenMarker
                 key={`${i}:${isSelected ? 'sel' : 'def'}`}
                 id={`${trip.id}-${i}`}
+                label={String(i + 1)}
+                selected={isSelected}
                 coordinate={{ latitude: s.latitude, longitude: s.longitude }}
                 onPress={() => setSelected(i)}
               >

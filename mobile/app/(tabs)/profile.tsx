@@ -17,6 +17,7 @@ import {
   followersCol,
   followingCol,
   deleteOwnVideo,
+  deleteTrip,
   getFollowCounts,
   getMyTrips,
   getMyVideos,
@@ -262,6 +263,15 @@ export default function Profile() {
                 ownerUid={me.uid}
                 canCreate={ROUTES_CREATE_ENABLED}
                 onCreate={() => router.push('/create-trip' as never)}
+                onDelete={async (trip) => {
+                  try {
+                    await deleteTrip(me.uid, trip.id);
+                    setTrips((prev) => prev.filter((t) => t.id !== trip.id));
+                  } catch (err) {
+                    console.warn('[profile] deleteTrip failed:', err);
+                    Alert.alert('Could not delete route', 'Please try again.');
+                  }
+                }}
                 emptyLabel="No routes yet. Create a trip route from your videos."
               />
             ) : (

@@ -1,45 +1,47 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
-import storage from '@react-native-firebase/storage';
 import {
   ActivityIndicator,
   Alert,
-  Image,
+  Dimensions,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker, Polyline, type LatLng } from 'react-native-maps';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { colors } from '@/lib/theme';
-import { DARK_MAP_STYLE } from '@/lib/mapStyle';
 import { ROUTES_CREATE_ENABLED } from '@/lib/features';
-import { OpenStreetMapTiles, androidOpenMapType } from '@/components/OpenStreetMapTiles';
-import { AndroidOpenMap, AndroidOpenMarker, AndroidOpenPolyline } from '@/components/AndroidOpenMap';
+import { getMyVideos, type VideoDoc } from '@/lib/firestore';
 
-const INITIAL_REGION = {
-  latitude: 31.5,
-  longitude: 34.8,
-  latitudeDelta: 6,
-  longitudeDelta: 6,
-};
+const MAX_STOPS = 10;
 
-type Stop = { latitude: number; longitude: number; description: string; imageUrl?: string };
-type Step = 'name' | 'map';
+const { width } = Dimensions.get('window');
+const COL_GAP = 2;
+const COLS = 3;
+const TILE_W = Math.floor((width - COL_GAP * (COLS - 1)) / COLS);
+const TILE_H = Math.floor(TILE_W * 1.4);
+
+type Step = 'name' | 'videos';
+
+function stopLabel(v: VideoDoc): string {
+  return (v.caption || v.location?.label || 'Untitled stop').trim() || 'Untitled stop';
+}
 
 /**
  * Trip builder wizard.
- *   Step 0 ('name') — enter the shared trip title (saved as the trip name).
- *   Step 1 ('map')  — tap the map to drop stops, each with its own description.
- * Back always returns to the previous step (map → name → leave screen).
+ *   Step 0 ('name')   — enter the trip title (saved as the trip name).
+ *   Step 1 ('videos') — pick up to MAX_STOPS of your own geotagged videos;
+ *                       tap order = stop number, with explicit reorder arrows.
+ * The route's stops inherit each video's location and caption.
  */
 export default function CreateTrip() {
   const me = auth().currentUser;
@@ -47,70 +49,63 @@ export default function CreateTrip() {
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<Step>('name');
   const [name, setName] = useState('');
-  const [stops, setStops] = useState<Stop[]>([]);
-  const [selected, setSelected] = useState(0);
+  const [videos, setVideos] = useState<VideoDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const [uploadingImg, setUploadingImg] = useState(false);
-
-  const current = stops[selected];
 
   useEffect(() => {
     if (!ROUTES_CREATE_ENABLED) router.replace('/(tabs)/profile' as never);
   }, [router]);
 
-  async function pickStopImage() {
+  useEffect(() => {
     if (!me) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Photos permission needed', 'Enable photo library access in Settings.');
-      return;
-    }
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.8,
+    getMyVideos(me.uid)
+      .then((list) =>
+        setVideos(
+          list.filter((v) => v.location?.latitude != null && v.location?.longitude != null),
+        ),
+      )
+      .catch((err) => {
+        console.warn('[create-trip] getMyVideos failed:', err);
+        setVideos([]);
+      })
+      .finally(() => setLoading(false));
+  }, [me]);
+
+  const selectedVideos = useMemo(
+    () =>
+      selectedIds
+        .map((id) => videos.find((v) => v.id === id))
+        .filter((v): v is VideoDoc => Boolean(v)),
+    [selectedIds, videos],
+  );
+
+  function toggle(video: VideoDoc) {
+    setSelectedIds((prev) => {
+      if (prev.includes(video.id)) return prev.filter((id) => id !== video.id);
+      if (prev.length >= MAX_STOPS) {
+        Alert.alert('Limit reached', `A route can have up to ${MAX_STOPS} videos.`);
+        return prev;
+      }
+      return [...prev, video.id];
     });
-    if (res.canceled || !res.assets[0]) return;
-    const idx = selected;
-    setUploadingImg(true);
-    try {
-      const path = `trip_images/${me.uid}/${Date.now()}.jpg`;
-      const ref = storage().ref(path);
-      await ref.putFile(res.assets[0].uri, { contentType: 'image/jpeg' });
-      const url = await ref.getDownloadURL();
-      setStops((prev) => prev.map((s, i) => (i === idx ? { ...s, imageUrl: url } : s)));
-    } catch (err: any) {
-      Alert.alert('Upload failed', err?.message ?? 'Try a different image.');
-    } finally {
-      setUploadingImg(false);
-    }
   }
 
-  function removeStopImage() {
-    setStops((prev) => prev.map((s, i) => (i === selected ? { ...s, imageUrl: undefined } : s)));
-  }
-
-  function addStop(coord: LatLng) {
-    setStops((prev) => {
-      const next = [...prev, { latitude: coord.latitude, longitude: coord.longitude, description: '' }];
-      setSelected(next.length - 1);
+  function move(index: number, dir: -1 | 1) {
+    setSelectedIds((prev) => {
+      const target = index + dir;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
       return next;
     });
   }
 
-  function setCurrentDescription(text: string) {
-    setStops((prev) => prev.map((s, i) => (i === selected ? { ...s, description: text } : s)));
-  }
-
-  function removeCurrent() {
-    setStops((prev) => prev.filter((_, i) => i !== selected));
-    setSelected((i) => Math.max(0, i - 1));
-  }
-
   async function save() {
     if (!me) return;
-    if (stops.length < 1) {
-      Alert.alert('Add stops', 'Tap the map to add at least one stop.');
+    if (selectedVideos.length === 0) {
+      Alert.alert('Pick videos', 'Select at least one video for your route.');
       return;
     }
     setSaving(true);
@@ -121,11 +116,12 @@ export default function CreateTrip() {
         .collection('trips')
         .add({
           name: name.trim(),
-          stops: stops.map((s) => ({
-            latitude: s.latitude,
-            longitude: s.longitude,
-            description: s.description.trim(),
-            imageUrl: s.imageUrl ?? null,
+          stops: selectedVideos.map((v) => ({
+            latitude: v.location!.latitude,
+            longitude: v.location!.longitude,
+            description: stopLabel(v),
+            imageUrl: null,
+            videoId: v.id,
           })),
           createdAt: firestore.FieldValue.serverTimestamp(),
         });
@@ -142,7 +138,7 @@ export default function CreateTrip() {
     return (
       <View style={styles.root}>
         <Stack.Screen options={{ headerShown: false }} />
-        <View style={[styles.topBar, { paddingTop: insets.top + 8, position: 'relative' }]}>
+        <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
           <Pressable onPress={() => router.back()} hitSlop={8} style={styles.iconBtnPlain}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
@@ -158,20 +154,22 @@ export default function CreateTrip() {
             <Ionicons name="map" size={28} color={colors.accent} />
           </View>
           <Text style={styles.nameHeading}>Name your trip</Text>
-          <Text style={styles.nameSub}>You&apos;ll add stops on the map in the next step.</Text>
+          <Text style={styles.nameSub}>
+            Next you&apos;ll pick up to {MAX_STOPS} of your videos as stops.
+          </Text>
           <TextInput
             value={name}
             onChangeText={setName}
-            placeholder="e.g. Dolomites loop"
+            placeholder="e.g. Japan"
             placeholderTextColor={colors.textFaint}
             style={[styles.input, styles.nameInput]}
             autoFocus
             maxLength={60}
             returnKeyType="next"
-            onSubmitEditing={() => name.trim() && setStep('map')}
+            onSubmitEditing={() => name.trim() && setStep('videos')}
           />
           <Pressable
-            onPress={() => name.trim() && setStep('map')}
+            onPress={() => name.trim() && setStep('videos')}
             disabled={!name.trim()}
             style={[styles.saveBtn, styles.nameContinue, !name.trim() && styles.saveBtnDim]}
           >
@@ -183,204 +181,184 @@ export default function CreateTrip() {
     );
   }
 
-  // ---- Step 1: drop stops on the map -------------------------------------
+  // ---- Step 1: pick and order videos -------------------------------------
   return (
     <View style={styles.root}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {Platform.OS === 'android' ? (
-        <AndroidOpenMap
-          style={StyleSheet.absoluteFill}
-          initialRegion={INITIAL_REGION}
-          onPress={(e: any) => {
-            const lngLat = e?.nativeEvent?.lngLat;
-            if (!lngLat) return;
-            addStop({ longitude: lngLat[0], latitude: lngLat[1] });
-          }}
-        >
-          <AndroidOpenPolyline
-            id="create-trip"
-            coordinates={stops}
-            strokeColor={colors.accent}
-            strokeWidth={3}
-          />
-          {stops.map((s, i) => (
-            <AndroidOpenMarker
-              key={`${s.latitude}-${s.longitude}-${i}`}
-              id={`stop-${i}`}
-              coordinate={s}
-              anchor="center"
-              onPress={() => setSelected(i)}
-            >
-              <View style={[styles.pin, i === selected && styles.pinSelected]}>
-                <Text style={styles.pinText}>{i + 1}</Text>
-              </View>
-            </AndroidOpenMarker>
-          ))}
-        </AndroidOpenMap>
-      ) : (
-        <MapView
-          style={StyleSheet.absoluteFill}
-          mapType={androidOpenMapType}
-          customMapStyle={DARK_MAP_STYLE}
-          userInterfaceStyle="dark"
-          initialRegion={INITIAL_REGION}
-          showsCompass={false}
-          toolbarEnabled={false}
-          onPress={(e) => addStop(e.nativeEvent.coordinate)}
-        >
-          <OpenStreetMapTiles />
-          {stops.length > 1 ? (
-            <Polyline coordinates={stops} strokeColor={colors.accent} strokeWidth={3} />
-          ) : null}
-          {stops.map((s, i) => (
-            <Marker
-              key={`${s.latitude}-${s.longitude}-${i}`}
-              coordinate={s}
-              anchor={{ x: 0.5, y: 0.5 }}
-              onPress={() => setSelected(i)}
-            >
-              <View style={[styles.pin, i === selected && styles.pinSelected]}>
-                <Text style={styles.pinText}>{i + 1}</Text>
-              </View>
-            </Marker>
-          ))}
-        </MapView>
-      )}
-
-      {/* Top bar — back returns to the name step */}
-      <View style={[styles.topBar, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
-        <Pressable onPress={() => setStep('name')} hitSlop={8} style={styles.iconBtn}>
-          <Ionicons name="chevron-back" size={24} color="#fff" />
+      <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+        <Pressable onPress={() => setStep('name')} hitSlop={8} style={styles.iconBtnPlain}>
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
-        <View style={styles.hintPill} pointerEvents="none">
-          <Ionicons name="pricetag" size={12} color={colors.accent} />
-          <Text style={styles.hintText} numberOfLines={1}>{name}</Text>
-        </View>
-        <View style={styles.spacer} />
+        <Text style={styles.stepTitle} numberOfLines={1}>
+          {name}
+        </Text>
+        <View style={styles.iconBtnPlain} />
       </View>
 
-      {/* Bottom editor */}
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.bottomWrap}>
-        <View style={[styles.panel, { paddingBottom: insets.bottom + 14 }]}>
-          <View style={styles.grabber} />
+      <Text style={styles.pickHint}>
+        Tap videos in the order of your route · {selectedIds.length}/{MAX_STOPS}
+      </Text>
 
-          {stops.length === 0 ? (
-            <Text style={styles.emptyHint}>Tap anywhere on the map to drop your first stop.</Text>
-          ) : (
-            <>
-              <View style={styles.stepRow}>
-                <Pressable
-                  onPress={() => setSelected((i) => Math.max(0, i - 1))}
-                  disabled={selected === 0}
-                  hitSlop={8}
-                  style={[styles.stepBtn, selected === 0 && styles.stepBtnDisabled]}
-                >
-                  <Ionicons name="chevron-back" size={18} color={colors.text} />
-                  <Text style={styles.stepBtnText}>Back</Text>
-                </Pressable>
-                <Text style={styles.stepCount}>
-                  Stop {selected + 1} of {stops.length}
+      {loading ? (
+        <View style={styles.centerFill}>
+          <ActivityIndicator color={colors.accent} />
+        </View>
+      ) : videos.length === 0 ? (
+        <View style={styles.centerFill}>
+          <Ionicons name="videocam-outline" size={32} color={colors.textFaint} />
+          <Text style={styles.emptyText}>
+            No videos with a location yet. Upload a video and tag where it was taken first.
+          </Text>
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.grid}>
+          {videos.map((v) => (
+            <PickTile
+              key={v.id}
+              video={v}
+              order={selectedIds.indexOf(v.id)}
+              onPress={() => toggle(v)}
+            />
+          ))}
+        </ScrollView>
+      )}
+
+      {/* Bottom panel: ordered stop list + save */}
+      <View style={[styles.panel, { paddingBottom: insets.bottom + 14 }]}>
+        {selectedVideos.length > 0 ? (
+          <ScrollView style={styles.orderList} bounces={false}>
+            {selectedVideos.map((v, i) => (
+              <View key={v.id} style={styles.orderRow}>
+                <View style={styles.orderBadge}>
+                  <Text style={styles.orderBadgeText}>{i + 1}</Text>
+                </View>
+                <Text style={styles.orderLabel} numberOfLines={1}>
+                  {stopLabel(v)}
                 </Text>
                 <Pressable
-                  onPress={() => setSelected((i) => Math.min(stops.length - 1, i + 1))}
-                  disabled={selected >= stops.length - 1}
-                  hitSlop={8}
-                  style={[styles.stepBtn, selected >= stops.length - 1 && styles.stepBtnDisabled]}
+                  onPress={() => move(i, -1)}
+                  disabled={i === 0}
+                  hitSlop={6}
+                  style={[styles.orderBtn, i === 0 && styles.orderBtnDisabled]}
+                  accessibilityLabel={`Move stop ${i + 1} up`}
                 >
-                  <Text style={styles.stepBtnText}>Next</Text>
-                  <Ionicons name="chevron-forward" size={18} color={colors.text} />
+                  <Ionicons name="chevron-up" size={16} color={colors.text} />
+                </Pressable>
+                <Pressable
+                  onPress={() => move(i, 1)}
+                  disabled={i === selectedVideos.length - 1}
+                  hitSlop={6}
+                  style={[
+                    styles.orderBtn,
+                    i === selectedVideos.length - 1 && styles.orderBtnDisabled,
+                  ]}
+                  accessibilityLabel={`Move stop ${i + 1} down`}
+                >
+                  <Ionicons name="chevron-down" size={16} color={colors.text} />
+                </Pressable>
+                <Pressable
+                  onPress={() => toggle(v)}
+                  hitSlop={6}
+                  style={styles.orderBtn}
+                  accessibilityLabel={`Remove ${stopLabel(v)}`}
+                >
+                  <Ionicons name="close" size={16} color={colors.danger} />
                 </Pressable>
               </View>
+            ))}
+          </ScrollView>
+        ) : null}
 
-              {/* ChatGPT-style composer: + attach inside the description box */}
-              <View style={styles.composer}>
-                {current?.imageUrl ? (
-                  <View style={styles.thumbWrap}>
-                    <Image source={{ uri: current.imageUrl }} style={styles.thumb} />
-                    <Pressable onPress={removeStopImage} hitSlop={6} style={styles.thumbX}>
-                      <Ionicons name="close" size={12} color="#fff" />
-                    </Pressable>
-                  </View>
-                ) : null}
-                <TextInput
-                  value={current?.description ?? ''}
-                  onChangeText={setCurrentDescription}
-                  placeholder={`Describe stop ${selected + 1}…`}
-                  placeholderTextColor={colors.textFaint}
-                  style={styles.composerInput}
-                  multiline
-                  maxLength={300}
-                />
-                <View style={styles.composerBar}>
-                  <Pressable onPress={pickStopImage} disabled={uploadingImg} style={styles.plusBtn} hitSlop={6}>
-                    {uploadingImg ? (
-                      <ActivityIndicator size="small" color={colors.text} />
-                    ) : (
-                      <Ionicons name="add" size={20} color={colors.text} />
-                    )}
-                  </Pressable>
-                </View>
-              </View>
-
-              <Pressable onPress={removeCurrent} hitSlop={6} style={styles.removeBtn}>
-                <Ionicons name="trash-outline" size={14} color={colors.danger} />
-                <Text style={styles.removeText}>Remove this stop</Text>
-              </Pressable>
-            </>
+        <Pressable
+          onPress={save}
+          disabled={saving || selectedVideos.length === 0}
+          style={({ pressed }) => [
+            styles.saveBtn,
+            (saving || pressed || selectedVideos.length === 0) && styles.saveBtnDim,
+          ]}
+        >
+          {saving ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.saveText}>
+              Save route{selectedVideos.length > 0 ? ` (${selectedVideos.length} stops)` : ''}
+            </Text>
           )}
-
-          <Pressable
-            onPress={save}
-            disabled={saving || stops.length === 0}
-            style={({ pressed }) => [
-              styles.saveBtn,
-              (saving || pressed || stops.length === 0) && styles.saveBtnDim,
-            ]}
-          >
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Save trip</Text>}
-          </Pressable>
-        </View>
-      </KeyboardAvoidingView>
+        </Pressable>
+      </View>
     </View>
+  );
+}
+
+function PickTile({
+  video,
+  order,
+  onPress,
+}: {
+  video: VideoDoc;
+  /** Index in the selection (0-based), or -1 when not selected. */
+  order: number;
+  onPress: () => void;
+}) {
+  const [failed, setFailed] = useState(false);
+  const selected = order >= 0;
+  const player = useVideoPlayer(video.downloadURL, (p) => {
+    p.muted = true;
+    p.loop = false;
+  });
+
+  useEffect(() => {
+    const sub = player.addListener('statusChange', ({ status, error }) => {
+      if (status === 'error' || error) setFailed(true);
+    });
+    return () => sub.remove();
+  }, [player]);
+
+  if (failed) return null;
+
+  return (
+    <Pressable onPress={onPress} style={styles.tile}>
+      <VideoView
+        player={player}
+        style={styles.tileVideo}
+        contentFit="cover"
+        nativeControls={false}
+        allowsVideoFrameAnalysis={false}
+      />
+      {selected ? <View style={styles.tileSelectedOverlay} /> : null}
+      <View style={styles.tileOverlay}>
+        <Text numberOfLines={2} style={styles.tileCaption}>
+          {stopLabel(video)}
+        </Text>
+      </View>
+      <View style={[styles.selectBadge, selected && styles.selectBadgeOn]}>
+        {selected ? <Text style={styles.selectBadgeText}>{order + 1}</Text> : null}
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   topBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 12,
     paddingBottom: 10,
   },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   iconBtnPlain: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  spacer: { width: 40, height: 40 },
-  stepTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  hintPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    maxWidth: 220,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+  stepTitle: { color: colors.text, fontSize: 16, fontWeight: '700', flex: 1, textAlign: 'center' },
+  pickHint: {
+    color: colors.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 10,
   },
-  hintText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  centerFill: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
+  emptyText: { color: colors.textDim, fontSize: 13, textAlign: 'center' },
 
   // Name step
   nameWrap: { flex: 1, paddingHorizontal: 24, justifyContent: 'center', alignItems: 'center', gap: 10 },
@@ -397,41 +375,6 @@ const styles = StyleSheet.create({
   },
   nameHeading: { color: colors.text, fontSize: 20, fontWeight: '800' },
   nameSub: { color: colors.textMuted, fontSize: 13, textAlign: 'center', marginBottom: 8 },
-  nameInput: { width: '100%', textAlign: 'center', fontSize: 16, paddingVertical: 14 },
-  nameContinue: { width: '100%', flexDirection: 'row', gap: 8, marginTop: 12 },
-
-  pin: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.accentDim,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderColor: '#fff',
-    borderWidth: 2,
-  },
-  pinSelected: { backgroundColor: colors.accent, transform: [{ scale: 1.2 }] },
-  pinText: { color: colors.bg, fontSize: 12, fontWeight: '800' },
-
-  bottomWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  panel: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    borderColor: colors.border,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    gap: 8,
-  },
-  grabber: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.borderAlt,
-    alignSelf: 'center',
-    marginBottom: 2,
-  },
   input: {
     backgroundColor: colors.bg,
     borderColor: colors.border,
@@ -442,52 +385,94 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
   },
-  descInput: { minHeight: 60, textAlignVertical: 'top' },
-  emptyHint: { color: colors.textDim, fontSize: 13, textAlign: 'center', paddingVertical: 12 },
-  stepRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
-  stepBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 4, paddingHorizontal: 4 },
-  stepBtnDisabled: { opacity: 0.35 },
-  stepBtnText: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  stepCount: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
-  removeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 2 },
-  removeText: { color: colors.danger, fontSize: 13, fontWeight: '600' },
-  composer: {
-    backgroundColor: colors.bg,
+  nameInput: { width: '100%', textAlign: 'center', fontSize: 16, paddingVertical: 14 },
+  nameContinue: { width: '100%', flexDirection: 'row', gap: 8, marginTop: 12 },
+
+  // Video grid
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: COL_GAP,
+    paddingBottom: 12,
+  },
+  tile: {
+    width: TILE_W,
+    height: TILE_H,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileVideo: { ...StyleSheet.absoluteFillObject },
+  tileSelectedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(56,189,248,0.25)',
+    borderWidth: 2,
+    borderColor: colors.accent,
+  },
+  tileOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.58)',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  tileCaption: { color: colors.text, fontSize: 11, fontWeight: '600' },
+  selectBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#fff',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectBadgeOn: { backgroundColor: colors.accent },
+  selectBadgeText: { color: colors.bg, fontSize: 12, fontWeight: '800' },
+
+  // Bottom panel
+  panel: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
     borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 8,
-    gap: 6,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    gap: 8,
   },
-  composerInput: {
-    color: colors.text,
-    fontSize: 14,
-    minHeight: 44,
-    textAlignVertical: 'top',
-    paddingHorizontal: 4,
+  orderList: { maxHeight: 200 },
+  orderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 5,
   },
-  composerBar: { flexDirection: 'row', alignItems: 'center' },
-  plusBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  orderBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  orderBadgeText: { color: colors.bg, fontSize: 11, fontWeight: '800' },
+  orderLabel: { color: colors.text, fontSize: 13, fontWeight: '600', flex: 1 },
+  orderBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  thumbWrap: { alignSelf: 'flex-start', position: 'relative' },
-  thumb: { width: 60, height: 60, borderRadius: 8, backgroundColor: colors.surfaceAlt },
-  thumbX: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  orderBtnDisabled: { opacity: 0.3 },
   saveBtn: {
     backgroundColor: colors.accent,
     borderRadius: 12,

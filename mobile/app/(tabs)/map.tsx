@@ -374,6 +374,7 @@ export default function MapScreen() {
             <AndroidOpenMarker
               key={p.key}
               id={p.key}
+              label={String(p.videos.length)}
               coordinate={{ latitude: p.latitude, longitude: p.longitude }}
               anchor="center"
               onPress={() => {

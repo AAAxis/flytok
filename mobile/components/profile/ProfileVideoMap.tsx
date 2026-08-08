@@ -158,6 +158,7 @@ export function ProfileVideoMap({ videos, loading, onPressVideo }: Props) {
               <AndroidOpenMarker
                 key={`${v.id}:${isSelected ? 'sel' : 'def'}`}
                 id={v.id}
+                selected={isSelected}
                 coordinate={{
                   latitude: v.location!.latitude,
                   longitude: v.location!.longitude,

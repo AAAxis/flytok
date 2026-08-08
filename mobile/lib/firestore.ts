@@ -317,6 +317,8 @@ export type TripStop = {
   longitude: number;
   description: string;
   imageUrl?: string | null;
+  /** Set when the stop was built from one of the owner's videos. */
+  videoId?: string | null;
 };
 
 /** A saved trip route stored at `users/{uid}/trips/{tripId}`. */
@@ -376,6 +378,11 @@ export async function updateTripStops(
         imageUrl: s.imageUrl ?? null,
       })),
     });
+}
+
+/** Delete a saved trip route. */
+export async function deleteTrip(uid: string, tripId: string): Promise<void> {
+  await tripsCol(uid).doc(tripId).delete();
 }
 
 export async function updateProfile({

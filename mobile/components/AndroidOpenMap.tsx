@@ -33,6 +33,8 @@ export function AndroidOpenMarker({
   children?: ReactNode;
   coordinate: AndroidLatLng;
   id?: string;
+  label?: string;
+  selected?: boolean;
   onPress?: () => void;
   anchor?: 'center' | 'bottom';
 }) {

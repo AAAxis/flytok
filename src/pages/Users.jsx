@@ -226,7 +226,8 @@ function CreateUserDialog({ open, onOpenChange, onSubmit, pending, error }) {
           <DialogTitle>Create user</DialogTitle>
           <DialogDescription>
             Creates a real Firebase Auth account with an auto-generated UID. Admin /
-            advertiser custom claims still need to be granted via scripts/grant-admin.js.
+            advertiser roles sync to auth claims automatically; the user must sign
+            out and back in to pick them up.
           </DialogDescription>
         </DialogHeader>
 

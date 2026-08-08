@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -55,12 +55,15 @@ export function ProfileRoutesList({
   ownerUid,
   canCreate,
   onCreate,
+  onDelete,
   emptyLabel = 'No routes yet.',
 }: {
   trips: Trip[];
   ownerUid: string;
   canCreate: boolean;
   onCreate?: () => void;
+  /** Owner-only: shows a trash button on each route card when provided. */
+  onDelete?: (trip: Trip) => void;
   emptyLabel?: string;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -101,6 +104,24 @@ export function ProfileRoutesList({
                       {t.createdAt ? ` · ${formatDate(t.createdAt)}` : ''}
                     </Text>
                   </View>
+                  {onDelete ? (
+                    <Pressable
+                      onPress={() =>
+                        Alert.alert(
+                          'Delete route?',
+                          `“${t.name || 'Untitled trip'}” will be removed permanently.`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Delete', style: 'destructive', onPress: () => onDelete(t) },
+                          ],
+                        )
+                      }
+                      hitSlop={8}
+                      accessibilityLabel={`Delete ${t.name || 'Untitled trip'}`}
+                    >
+                      <Ionicons name="trash-outline" size={17} color="rgba(255,255,255,0.85)" />
+                    </Pressable>
+                  ) : null}
                   <Ionicons
                     name={open ? 'chevron-up' : 'chevron-down'}
                     size={18}

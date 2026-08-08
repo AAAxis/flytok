@@ -73,6 +73,13 @@ service cloud.firestore {
       match /blocked/{otherUid} {
         allow read, write: if isSelf(uid);
       }
+
+      // Trip routes — visible on any profile, but only the owner can
+      // create/edit/delete their own.
+      match /trips/{tripId} {
+        allow read:  if signedIn();
+        allow write: if isSelf(uid);
+      }
     }
 
     // === videos/{videoId} ===

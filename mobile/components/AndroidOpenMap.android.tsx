@@ -161,11 +161,15 @@ export const AndroidOpenMap = forwardRef<AndroidOpenMapRef, {
 export function AndroidOpenMarker({
   coordinate,
   id,
+  label,
+  selected = false,
   onPress,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   coordinate: AndroidLatLng;
   id?: string;
+  label?: string;
+  selected?: boolean;
   onPress?: () => void;
   anchor?: 'center' | 'bottom';
 }) {
@@ -176,12 +180,12 @@ export function AndroidOpenMarker({
       {
         id: markerId,
         coordinate,
-        html: pinHtml(markerId.match(/\d+$/)?.[0] ?? '•'),
+        html: pinHtml(label ?? '•', selected),
       },
       onPress,
     );
     return () => ctx?.removeMarker(markerId);
-  }, [ctx, markerId, coordinate.latitude, coordinate.longitude, onPress]);
+  }, [ctx, markerId, coordinate.latitude, coordinate.longitude, label, selected, onPress]);
   return null;
 }
 
