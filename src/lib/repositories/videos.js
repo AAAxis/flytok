@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   collectionGroup,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -12,7 +13,7 @@ import {
   serverTimestamp,
   where,
 } from 'firebase/firestore';
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { firebaseAuth, firebaseStorage, firestore } from '@/lib/firebase';
 
 const videosCol = () => collection(firestore, 'videos');
@@ -152,5 +153,20 @@ export const videosRepo = {
     });
 
     return { id: docRef.id, storagePath: path, downloadURL };
+  },
+
+  // Deletes the Firestore doc and, if present, the underlying Storage file.
+  delete: async (id) => {
+    const snap = await getDoc(doc(firestore, 'videos', id));
+    const storagePath = snap.exists() ? snap.data().storagePath : null;
+    await deleteDoc(doc(firestore, 'videos', id));
+    if (storagePath) {
+      try {
+        await deleteObject(storageRef(firebaseStorage, storagePath));
+      } catch {
+        // Storage file may already be gone; the Firestore doc removal is
+        // what matters for the admin panel's listing.
+      }
+    }
   },
 };

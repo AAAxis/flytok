@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { Image as ImageIcon, Plus, Upload, X } from 'lucide-react';
+import { Image as ImageIcon, Plus, Trash2, Upload, X } from 'lucide-react';
 import { videosRepo } from '@/lib/repositories';
 import {
   Table,
@@ -16,6 +16,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LocationPicker } from '@/components/admin/LocationPicker';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 function fmtDate(ts) {
   if (!ts) return '—';
@@ -26,11 +36,21 @@ function fmtDate(ts) {
 const fmtNum = (n) => (n ?? 0).toLocaleString();
 
 export default function Videos() {
+  const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const { data: videos = [], isLoading, error } = useQuery({
     queryKey: ['videos', 'list'],
     queryFn: () => videosRepo.list({ pageSize: 50 }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => videosRepo.delete(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['videos'] });
+      setConfirmDelete(null);
+    },
   });
 
   return (
@@ -65,6 +85,7 @@ export default function Videos() {
                 <TableHead className="text-zinc-400">Uploaded</TableHead>
                 <TableHead className="text-zinc-400 text-right">Likes</TableHead>
                 <TableHead className="text-zinc-400">Status</TableHead>
+                <TableHead className="text-zinc-400 text-right"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -110,6 +131,16 @@ export default function Videos() {
                       {v.status ?? 'active'}
                     </Badge>
                   </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setConfirmDelete(v)}
+                      className="gap-1 text-red-400 hover:text-red-300"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -118,6 +149,40 @@ export default function Videos() {
       )}
 
       {uploading && <UploadVideoModal onClose={() => setUploading(false)} />}
+
+      <AlertDialog
+        open={confirmDelete !== null}
+        onOpenChange={(open) => !open && setConfirmDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete video?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes{' '}
+              <span className="text-zinc-200">
+                {confirmDelete?.caption || confirmDelete?.id}
+              </span>{' '}
+              and its file from storage.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteMut.error && (
+            <div className="text-sm text-red-400">{deleteMut.error.message}</div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMut.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteMut.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirmDelete) deleteMut.mutate(confirmDelete.id);
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteMut.isPending ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
